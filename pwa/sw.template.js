@@ -12,7 +12,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((c) => c.addAll(['./', ...PRECACHE]))
+      // 화면은 브라우저 캐시(깃허브 Pages는 10분)에 남은 옛 버전이 아니라 서버의 새 버전으로 저장
+      .then((c) => c.addAll([new Request('./', { cache: 'reload' }), ...PRECACHE]))
       .then(() => self.skipWaiting()),
   );
 });
@@ -67,7 +68,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         try {
-          const res = await fetch(req);
+          // 브라우저 캐시의 옛 화면을 그대로 쓰면, 새 버전을 올린 직후 이미 지운 옛 스크립트를 찾다가 깨질 수 있어
+          // 항상 서버에 확인하고 받음 (바뀌지 않았으면 짧은 확인 응답만 오감). 주소 이동은 브라우저가 처리하게 둠
+          const res = await fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'manual' }));
           if (res.ok) {
             const copy = res.clone();
             event.waitUntil(caches.open(SHELL).then((c) => c.put('./', copy)));

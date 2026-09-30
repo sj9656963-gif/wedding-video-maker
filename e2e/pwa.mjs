@@ -18,9 +18,11 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
 };
 
-const server = await preview({ root, preview: { port: 4175, strictPort: false }, logLevel: 'warn' });
-const base = server.resolvedUrls.local[0];
-let serverOpen = true;
+// 배포된 사이트 점검: PWA_URL=https://아이디.github.io/저장소/ node e2e/pwa.mjs (이때는 로컬 서버를 띄우지 않음)
+const liveUrl = process.env.PWA_URL ? process.env.PWA_URL.replace(/\/?$/, '/') : '';
+const server = liveUrl ? null : await preview({ root, preview: { port: 4175, strictPort: false }, logLevel: 'warn' });
+const base = liveUrl || server.resolvedUrls.local[0];
+let serverOpen = !!server;
 const closeServer = async () => {
   if (!serverOpen) return;
   serverOpen = false;
@@ -59,7 +61,7 @@ try {
     const r = await navigator.serviceWorker.ready;
     return { scope: r.scope, state: r.active?.state ?? null, controlled: !!navigator.serviceWorker.controller };
   });
-  check('서비스 워커 등록 · 활성', reg.state === 'activated', JSON.stringify(reg));
+  check('서비스 워커 등록 · 활성 (사이트 주소 범위)', reg.state === 'activated' && reg.scope === base, JSON.stringify(reg));
 
   // ── 다시 열기: 서비스 워커가 페이지를 맡음 ──
   await page.reload();
@@ -95,6 +97,9 @@ try {
     !off.online && off.creator === '제작자 : 부산북구 주양현' && off.cards === 10 && off.demo,
     JSON.stringify(off),
   );
+  // 서비스 워커가 직접 받는 요청도 막혔는지 (그래야 저장본만으로 열렸다는 뜻). 저장본에 없는 파일을 요청해 봄
+  const swNet = await page.evaluate(() => fetch(`./sw.js?probe=${Date.now()}`, { cache: 'no-store' }).then((r) => `열림(${r.status})`, () => '막힘'));
+  console.log(`서비스 워커 쪽 인터넷: ${swNet}`);
   // 인터넷 없이 사진 올리기 → 미리보기
   const specs = fixtureSpecs();
   await page.setInputFiles('#file-input', specs.slice(0, 8).map((s) => path.join(fixDir, s.file)));
@@ -123,7 +128,7 @@ try {
   await page.click('label.theme-card:has(input[value="street"])');
   await page.waitForTimeout(3000);
   // 인터넷 없이 받지 못한 파일 (처음 쓰는 글꼴 조각 등)
-  const missing = [...new Set(failed)];
+  const missing = [...new Set(failed)].filter((u) => !u.includes('probe='));
   console.log(`인터넷 없이 받지 못한 파일 ${missing.length}개${missing.length ? `: ${missing.slice(0, 6).join(', ')}` : ''}`);
   check('콘솔 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (e) {
