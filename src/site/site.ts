@@ -1,6 +1,7 @@
 // 홈 화면(홍보 영역) 초기화: 밝기 전환, 비단 배경, 모션, 쇼케이스, 숫자
 
-import { THEMES, TITLE_DESIGNS, resolveTheme } from '../themes';
+import { fontFamilyCount } from '../font-catalog';
+import { FILTERS, PARTICLES, THEMES, TITLE_DESIGNS, TRANSITIONS } from '../themes';
 import { LAYOUT_SPECS } from '../timeline';
 import { initAppearance } from './appearance';
 import { initCounters, initMagnetic, initMarquee, initMorph, initNav, initReveal, initTilt, initWhy, splitHeadings } from './motion';
@@ -16,17 +17,20 @@ export interface Site {
   setBusy(busy: boolean): void;
 }
 
-/** 스타일·양식·오프닝·전환·배치 개수 (홍보 문구에 쓰는 실제 값) */
-export function catalogCounts(): Record<'styles' | 'variants' | 'titles' | 'transitions' | 'layouts', number> {
-  const all = THEMES.flatMap((t) => t.variants.map((v) => resolveTheme(t.id, { variant: v.id })));
-  const transitions = new Set(all.flatMap((t) => t.transitions.map((x) => x.type)));
+export type CountKey = 'styles' | 'variants' | 'titles' | 'transitions' | 'layouts' | 'fonts' | 'particles' | 'filters';
+
+/** 스타일·양식·오프닝·전환·배치·글씨체·효과 개수 (홍보 문구에 쓰는 실제 값) */
+export function catalogCounts(): Record<CountKey, number> {
   const layouts = new Set([...Object.values(LAYOUT_SPECS).map((s) => s.layout), 'magazine']);
   return {
     styles: THEMES.length,
     variants: THEMES.reduce((s, t) => s + t.variants.length, 0),
     titles: TITLE_DESIGNS.length,
-    transitions: transitions.size,
+    transitions: TRANSITIONS.length,
     layouts: layouts.size,
+    fonts: fontFamilyCount(),
+    particles: PARTICLES.filter((p) => p.id !== 'none').length,
+    filters: FILTERS.length,
   };
 }
 
@@ -38,8 +42,15 @@ export function initSite(opts: { onPickStyle: (id: string) => void }): Site {
   initAppearance(() => silk?.refreshColors());
 
   const counts = catalogCounts();
+  // 문구 속 숫자도 실제 값으로 (제목을 단어별로 나누기 전에)
+  for (const el of document.querySelectorAll<HTMLElement>('[data-stat]')) {
+    const v = counts[el.dataset.stat as CountKey];
+    if (v !== undefined) el.textContent = String(v);
+  }
   const cmp = document.getElementById('cmp-styles');
   if (cmp) cmp.textContent = `${counts.styles}가지 스타일 · ${counts.variants}가지 양식 · 오프닝 ${counts.titles}종`;
+  const cmpCustom = document.getElementById('cmp-custom');
+  if (cmpCustom) cmpCustom.textContent = `글씨체 ${counts.fonts}종 · 색감 필터 ${counts.filters}종 · 효과 ${counts.particles}종 직접 선택`;
 
   splitHeadings();
   initReveal();
@@ -50,7 +61,25 @@ export function initSite(opts: { onPickStyle: (id: string) => void }): Site {
   if (morph) initMorph(morph, ['영화', '동화', '화보', '선물']);
   initMarquee(
     THEMES.map((t) => t.label.toUpperCase()),
-    ['영화 같은 전환', '키네틱 타이포', '레터박스', '네온사인 타이틀', '폴라로이드', '스티커 콜라주', '전시 액자', '타원 액자', '나뭇잎 리스', 'REC 캠코더', '필름 그레인', '사진별 문구'],
+    [
+      '영화 같은 전환',
+      '키네틱 타이포',
+      `글씨체 ${counts.fonts}종`,
+      '버블 타이틀',
+      '한지 낙관',
+      '매거진 커버',
+      '동화책 별자리',
+      '모노그램',
+      '여행 엽서',
+      '레트로 선셋',
+      '네온사인 타이틀',
+      '폴라로이드',
+      '스티커 콜라주',
+      '전시 액자',
+      'REC 캠코더',
+      '색감 필터',
+      '사진별 문구',
+    ],
   );
   initWhy();
   initCounters(counts);

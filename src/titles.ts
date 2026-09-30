@@ -8,18 +8,21 @@ import { easeOutBack } from './layouts-extra';
 import { hash01 } from './random';
 import { wrapText } from './text-layout';
 import { fontSpec, type Theme, type ThemeLook } from './themes';
+import { bubbly, cover, hanji, monogram, postcard, storybook, sunburst } from './titles-extra';
 import type { WeddingInfo } from './types';
 
 export const HANGUL = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
 const CX = W / 2;
 const TAU = Math.PI * 2;
 const WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+/** 이름 사이 'and'에 쓰는 필기체 (처음부터 등록된 글꼴) */
+const SCRIPT_FAMILY = 'Great Vibes';
 
 export interface TextEnv extends DrawTarget {
   theme: Theme;
 }
 
-type Align = 'center' | 'left' | 'right';
+export type Align = 'center' | 'left' | 'right';
 
 /** 주어진 폭에 맞도록 글꼴 크기를 줄여 ctx.font에 설정하고 크기를 돌려줌 */
 export function fitFont(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, make: (size: number) => string, size: number): number {
@@ -33,7 +36,7 @@ export function fitFont(ctx: CanvasRenderingContext2D, text: string, maxWidth: n
 }
 
 /** 자간을 둔 글자 (정렬 지원). 그린 폭을 돌려줌 */
-function spaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number, align: Align = 'center'): number {
+export function spaced(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number, align: Align = 'center'): number {
   const chars = Array.from(text);
   const widths = chars.map((c) => ctx.measureText(c).width);
   const total = widths.reduce((a, b) => a + b, 0) + spacing * Math.max(0, chars.length - 1);
@@ -90,10 +93,83 @@ export function drawOrnament(ctx: CanvasRenderingContext2D, kind: ThemeLook['orn
       ctx.arc(cx, cy, 3.5, 0, TAU);
       ctx.fill();
       break;
+    case 'flower':
+      // 꽃잎 다섯 장
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i / 5) * TAU;
+        ctx.beginPath();
+        ctx.ellipse(cx + Math.cos(a) * 6.4, cy + Math.sin(a) * 6.4, 5.6, 4.6, a, 0, TAU);
+        ctx.fill();
+      }
+      ctx.save();
+      ctx.globalAlpha *= 0.55;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.6, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      break;
+    case 'bow':
+      // 리본: 양쪽 고리와 가운데 매듭, 늘어진 끈
+      for (const s of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.bezierCurveTo(cx + s * 6, cy - 12, cx + s * 20, cy - 10, cx + s * 17, cy);
+        ctx.bezierCurveTo(cx + s * 20, cy + 10, cx + s * 6, cy + 12, cx, cy);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + 2);
+        ctx.lineTo(cx + s * 9, cy + 15);
+        ctx.lineTo(cx + s * 4, cy + 16);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3.4, 0, TAU);
+      ctx.fill();
+      break;
+    case 'rings':
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      for (const dx of [-5.5, 5.5]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx, cy + 1, 8, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx - 5.5, cy - 8.5);
+      ctx.lineTo(cx - 3, cy - 12);
+      ctx.lineTo(cx - 8, cy - 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      break;
+    case 'crown':
+      ctx.beginPath();
+      ctx.moveTo(cx - 13, cy + 7);
+      ctx.lineTo(cx - 14, cy - 7);
+      ctx.lineTo(cx - 7, cy - 1);
+      ctx.lineTo(cx, cy - 11);
+      ctx.lineTo(cx + 7, cy - 1);
+      ctx.lineTo(cx + 14, cy - 7);
+      ctx.lineTo(cx + 13, cy + 7);
+      ctx.closePath();
+      ctx.fill();
+      for (const x of [-14, 0, 14]) {
+        ctx.beginPath();
+        ctx.arc(cx + x, cy + (x === 0 ? -12.5 : -8), 2.2, 0, TAU);
+        ctx.fill();
+      }
+      break;
+    case 'none':
+      break;
   }
 }
 
 export function drawDividerAt(ctx: CanvasRenderingContext2D, look: ThemeLook, cx: number, cy: number, color: string, half = 170): void {
+  /** 가운데 장식 크기 (꾸미기에서 고른 장식이 알아보이도록 조금 크게) */
+  const S = 1.5;
   ctx.save();
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
@@ -101,12 +177,54 @@ export function drawDividerAt(ctx: CanvasRenderingContext2D, look: ThemeLook, cx
   ctx.globalAlpha *= 0.85;
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  ctx.moveTo(cx - half, cy);
-  ctx.lineTo(cx - 24, cy);
-  ctx.moveTo(cx + 24, cy);
-  ctx.lineTo(cx + half, cy);
+  if (look.ornament === 'none') {
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx + half, cy);
+  } else {
+    const gap = (look.ornament === 'bow' || look.ornament === 'crown' || look.ornament === 'rings' ? 30 : 24) * S;
+    ctx.moveTo(cx - half, cy);
+    ctx.lineTo(cx - gap, cy);
+    ctx.moveTo(cx + gap, cy);
+    ctx.lineTo(cx + half, cy);
+  }
   ctx.stroke();
-  drawOrnament(ctx, look.ornament, cx, cy, color);
+  ctx.translate(cx, cy);
+  ctx.scale(S, S);
+  drawOrnament(ctx, look.ornament, 0, 0, color);
+  ctx.restore();
+}
+
+/** 두 개의 고리가 겹친 반지 모양 (이름 사이) */
+function drawRingsJoin(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, size * 0.075);
+  const r = size * 0.3;
+  for (const dx of [-r * 0.55, r * 0.55]) {
+    ctx.beginPath();
+    ctx.arc(cx + dx, cy + size * 0.04, r, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** 무한대 기호 (∞) */
+function drawInfinity(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, color: string): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, size * 0.07);
+  ctx.beginPath();
+  const a = size * 0.36;
+  for (let i = 0; i <= 64; i++) {
+    const th = (i / 64) * TAU;
+    const d = 1 + Math.sin(th) * Math.sin(th);
+    const x = (a * Math.cos(th)) / d;
+    const y = (a * Math.sin(th) * Math.cos(th)) / d;
+    if (i === 0) ctx.moveTo(cx + x, cy + y);
+    else ctx.lineTo(cx + x, cy + y);
+  }
+  ctx.closePath();
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -127,31 +245,45 @@ export function drawNamesRow(
   const g = info.groom.trim();
   const b = info.bride.trim();
   if (!g && !b) return;
+  // 정렬·글꼴·색을 바꾸므로, 뒤에 그리는 글(날짜·안내 문구 등)이 영향받지 않게 되돌려 놓음
+  ctx.save();
   ctx.fillStyle = color;
   if (!g || !b) {
     ctx.textAlign = align;
     fitFont(ctx, g || b, maxW, make, size);
     ctx.fillText(g || b, x, cy);
+    ctx.restore();
     return;
   }
   ctx.font = make(size);
+  const join = theme.look.nameJoin;
+  // 'and'는 글자라 조금 넓게
+  const jw = (s: number) => s * (join === 'and' ? 1.25 : join === 'dot' ? 0.3 : join === 'infinity' || join === 'rings' ? 0.8 : 0.55);
+  const gapOf = (s: number) => s * (join === 'dot' ? 0.32 : 0.4);
   let gw = ctx.measureText(g).width;
   let bw = ctx.measureText(b).width;
-  let total = gw + bw + size * 1.35;
+  let total = gw + bw + jw(size) + gapOf(size) * 2;
   if (total > maxW) {
     size *= maxW / total;
     ctx.font = make(size);
     gw = ctx.measureText(g).width;
     bw = ctx.measureText(b).width;
-    total = gw + bw + size * 1.35;
+    total = gw + bw + jw(size) + gapOf(size) * 2;
   }
-  const jwS = size * 0.55;
-  const gapS = size * 0.4;
+  const jwS = jw(size);
+  const gapS = gapOf(size);
   const x0 = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
   ctx.textAlign = 'left';
   ctx.fillText(g, x0, cy);
   ctx.fillText(b, x0 + gw + gapS * 2 + jwS, cy);
   const jx = x0 + gw + gapS + jwS / 2;
+  drawNameJoin(env, jx, cy, size, joinColor);
+  ctx.restore();
+}
+
+/** 이름 사이 기호 하나 (가운데 jx, cy). size = 이름 글자 크기 */
+export function drawNameJoin(env: TextEnv, jx: number, cy: number, size: number, joinColor: string): void {
+  const { ctx, theme } = env;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.fillStyle = joinColor;
@@ -167,17 +299,34 @@ export function drawNamesRow(
       ctx.font = fontSpec(theme.fonts.latin, size * 0.9, 500);
       ctx.fillText('×', jx, cy);
       break;
+    case 'and':
+      ctx.font = fontSpec(SCRIPT_FAMILY, size * 0.78);
+      ctx.fillText('and', jx, cy + size * 0.04);
+      break;
+    case 'dot':
+      ctx.beginPath();
+      ctx.arc(jx, cy, Math.max(3, size * 0.07), 0, TAU);
+      ctx.fill();
+      break;
+    case 'rings':
+      drawRingsJoin(ctx, jx, cy, size, joinColor);
+      break;
+    case 'infinity':
+      drawInfinity(ctx, jx, cy, size, joinColor);
+      break;
   }
   ctx.restore();
 }
 
-interface DateParts {
+export interface DateParts {
   dot: string;
   week: string;
   time: string;
   year: string;
+  month: number;
+  day: number;
 }
-function dateParts(info: WeddingInfo): DateParts | null {
+export function dateParts(info: WeddingInfo): DateParts | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(info.date);
   if (!m) return null;
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
@@ -187,14 +336,27 @@ function dateParts(info: WeddingInfo): DateParts | null {
     const h = Number(tm[1]);
     time = `${h < 12 ? 'AM' : 'PM'} ${h % 12 || 12}:${tm[2]}`;
   }
-  return { dot: `${m[1]}. ${m[2]}. ${m[3]}`, week: WEEK[d.getDay()], time, year: m[1] };
+  return { dot: `${m[1]}. ${m[2]}. ${m[3]}`, week: WEEK[d.getDay()], time, year: m[1], month: Number(m[2]), day: Number(m[3]) };
 }
 
-function titleOf(env: TextEnv, info: WeddingInfo, outro: boolean): string {
-  return outro ? env.theme.outroScript : info.introTitle.trim() || env.theme.introScript;
+/** 오프닝 제목 또는 엔딩 제목 (비어 있으면 스타일 기본 문구) */
+export function titleOf(env: TextEnv, info: WeddingInfo, outro: boolean): string {
+  return outro ? (info.outroTitle ?? '').trim() || env.theme.outroScript : info.introTitle.trim() || env.theme.introScript;
 }
 
-function messageLines(ctx: CanvasRenderingContext2D, info: WeddingInfo, font: string, maxW: number, max: number): string[] {
+/** 한글 제목·이름 글꼴 */
+export function nameFont(theme: Theme): (s: number) => string {
+  const f = theme.fonts;
+  return (s) => fontSpec(f.name, s, f.nameWeight);
+}
+
+/** 영문 제목을 굵은 강조 글꼴로 쓰는 디자인(키네틱 등): 사용자가 제목 글꼴을 골랐으면 그 글꼴 */
+export function displayTitleFont(theme: Theme): (s: number) => string {
+  const f = theme.fonts;
+  return f.titleCustom ? (s) => fontSpec(f.title, s, f.titleWeight, f.titleItalic) : (s) => fontSpec(f.display, s, f.displayWeight);
+}
+
+export function messageLines(ctx: CanvasRenderingContext2D, info: WeddingInfo, font: string, maxW: number, max: number): string[] {
   const message = info.outroMessage.trim();
   if (!message) return [];
   ctx.font = font;
@@ -204,16 +366,22 @@ function messageLines(ctx: CanvasRenderingContext2D, info: WeddingInfo, font: st
 }
 
 /** 등장 정도 (0~1) */
-function appear(u: number, at: number, len: number): number {
+export function appear(u: number, at: number, len: number): number {
   return easeOutCubic((u - at) / len);
 }
 
-function softShadow(env: TextEnv, blur = 16): void {
+export function softShadow(env: TextEnv, blur = 16): void {
   const { ctx, theme, k } = env;
   ctx.shadowColor = theme.colors.textShadow;
   ctx.shadowBlur = blur * k;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 2 * k;
+  // 꾸미기 '진한 그림자': 번짐을 줄이고 오른쪽 아래로 떨어뜨려 글자 윤곽이 또렷하게
+  if (theme.custom.textEffect === 'strong') {
+    ctx.shadowBlur = Math.max(5, blur * 0.4) * k;
+    ctx.shadowOffsetX = 3 * k;
+    ctx.shadowOffsetY = 5 * k;
+  }
 }
 
 // ───────────────────────── 청첩장 카드 ─────────────────────────
@@ -222,6 +390,7 @@ function invitation(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
   const { ctx, theme, k } = env;
   const look = theme.look;
   const fs = theme.fonts;
+  const nameF = nameFont(theme);
   const cw = 900;
   const ch = outro ? 660 : 620;
   const e = appear(u, 0.15 * f, 1.1 * Math.max(0.6, f));
@@ -260,7 +429,7 @@ function invitation(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
   const title = titleOf(env, info, outro);
   const drawTitleText = (y: number, size: number) => {
     ctx.fillStyle = look.paperAccent;
-    if (HANGUL.test(title)) fitFont(ctx, title, 740, (s) => fontSpec(fs.body, s, fs.nameWeight), size * 0.62);
+    if (HANGUL.test(title)) fitFont(ctx, title, 740, nameF, size * 0.62);
     else if (theme.titleStyle === 'script') fitFont(ctx, title, 740, (s) => fontSpec(fs.title, s, fs.titleWeight, fs.titleItalic), size);
     else {
       const up = title.toUpperCase();
@@ -279,7 +448,7 @@ function invitation(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
     });
     item(1.0, () => drawTitleText(cy - 132, 96));
     item(1.3, () => drawDividerAt(ctx, look, CX, cy - 56, look.paperAccent, 150));
-    item(1.6, () => drawNamesRow(env, info, CX, cy + 16, 56, (s) => serif(s, fs.nameWeight), look.paperText, look.paperAccent, 'center', 740));
+    item(1.6, () => drawNamesRow(env, info, CX, cy + 16, 56, nameF, look.paperText, look.paperAccent, 'center', 740));
     const date = formatKoreanDate(info.date, info.time);
     if (date)
       item(2.0, () => {
@@ -308,12 +477,12 @@ function invitation(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
       });
       y += 54;
     });
-    item(2.4, () => drawNamesRow(env, info, CX, y + 26, 44, (s) => serif(s, fs.nameWeight), look.paperText, look.paperAccent, 'center', 740));
+    item(2.4, () => drawNamesRow(env, info, CX, y + 26, 44, nameF, look.paperText, look.paperAccent, 'center', 740));
     const notice = info.outroNotice.trim();
     if (notice)
       item(3.0, () => {
         ctx.fillStyle = look.paperAccent;
-        fitFont(ctx, notice, 740, (s) => serif(s, fs.nameWeight), 30);
+        fitFont(ctx, notice, 740, (s) => serif(s, fs.bodyBold), 30);
         ctx.globalAlpha *= 0.8 + 0.2 * Math.sin(u * 2.2);
         ctx.fillText(notice, CX, cy + ch / 2 - 78);
       });
@@ -345,7 +514,7 @@ function movie(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: boo
     ctx.globalAlpha = base * a;
     ctx.fillStyle = c.accent;
     if (HANGUL.test(text)) {
-      fitFont(ctx, text, 1500, (s) => fontSpec(fs.body, s, fs.nameWeight), size * 0.72);
+      fitFont(ctx, text, 1500, nameFont(theme), size * 0.72);
       ctx.fillText(text, CX, y);
       return;
     }
@@ -377,7 +546,7 @@ function movie(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: boo
     const na = appear(u, 1.9 * f, 1.1 * sp);
     if (na > 0) {
       ctx.globalAlpha = base * na;
-      drawNamesRow(env, info, CX, H / 2 + 96, 60, (s) => body(s, fs.nameWeight), c.text, c.accent);
+      drawNamesRow(env, info, CX, H / 2 + 96, 60, nameFont(theme), c.text, c.accent);
     }
     const d = dateParts(info);
     const credit = [d ? `${d.dot} ${d.week}` : '', d?.time ?? '', info.venue.trim()].filter(Boolean).join('   |   ');
@@ -411,7 +580,7 @@ function movie(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: boo
     const na = appear(u, 3.3 * f, 1 * sp);
     if (na > 0) {
       ctx.globalAlpha = base * na;
-      drawNamesRow(env, info, CX, y + 84, 52, (s) => body(s, fs.nameWeight), c.text, c.accent);
+      drawNamesRow(env, info, CX, y + 84, 52, nameFont(theme), c.text, c.accent);
     }
     const notice = info.outroNotice.trim();
     const no = appear(u, 4 * f, 1 * sp);
@@ -446,8 +615,11 @@ function kinetic(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: b
   const c = theme.colors;
   const title = titleOf(env, info, outro);
   const hangul = HANGUL.test(title);
-  const lines = splitLines(hangul ? title : title.toUpperCase(), 3);
-  const make = (s: number) => (hangul ? fontSpec(fs.body, s, fs.nameWeight) : fontSpec(fs.display, s, fs.displayWeight));
+  // 필기체를 직접 골랐으면 대문자로 바꾸지 않음 (필기체 대문자는 읽기 어려움)
+  const upper = !hangul && !(fs.titleCustom && theme.titleStyle === 'script');
+  const lines = splitLines(upper ? title.toUpperCase() : title, 3);
+  const latinMake = displayTitleFont(theme);
+  const make = hangul ? nameFont(theme) : latinMake;
   const targetW = lines.length === 1 ? 1100 : 1180;
   const sizes = lines.map((l) => {
     ctx.font = make(100);
@@ -456,7 +628,8 @@ function kinetic(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: b
   });
   const lineH = sizes.map((s) => s * 0.94);
   const msg = outro ? messageLines(ctx, info, fontSpec(fs.body, 42, fs.bodyWeight), 1500, 3) : [];
-  const extraH = outro ? 110 + msg.length * 62 : 190;
+  const notice = outro ? info.outroNotice.trim() : '';
+  const extraH = outro ? 110 + msg.length * 62 + (notice ? 74 : 0) : 190;
   const total = lineH.reduce((a, b) => a + b, 0) + extraH;
   let y = H / 2 - total / 2;
   const base = ctx.globalAlpha;
@@ -490,7 +663,7 @@ function kinetic(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: b
     ctx.restore();
   });
   const at2 = (0.3 + lines.length * 0.22 + 0.2) * f;
-  const body = (s: number, w = fs.nameWeight) => fontSpec(fs.body, s, w);
+  const body = nameFont(theme);
   if (!outro) {
     const na = appear(u, at2, 0.6 * Math.max(0.6, f));
     if (na > 0) {
@@ -522,6 +695,13 @@ function kinetic(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: b
     if (na > 0) {
       ctx.globalAlpha = base * na;
       drawNamesRow(env, info, CX, my + 30, 58, (s) => body(s), c.accent, c.text);
+    }
+    const no = appear(u, at2 + 1.3 * f, 0.6);
+    if (notice && no > 0) {
+      ctx.globalAlpha = base * no * (0.8 + 0.2 * Math.sin(u * 2.2));
+      ctx.fillStyle = c.sub;
+      fitFont(ctx, notice, 1400, (s) => fontSpec(fs.body, s, fs.bodyWeight), 34);
+      ctx.fillText(notice, CX, my + 104);
     }
   }
   ctx.restore();
@@ -566,7 +746,11 @@ function neon(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bool
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const titleFont = (s: number) =>
-    HANGUL.test(title) ? fontSpec(fs.body, s * 0.6, fs.nameWeight) : theme.titleStyle === 'script' ? fontSpec(fs.title, s, fs.titleWeight) : fontSpec(fs.title, s * 0.55, fs.titleWeight);
+    HANGUL.test(title)
+      ? nameFont(theme)(s * 0.6)
+      : theme.titleStyle === 'script'
+        ? fontSpec(fs.title, s, fs.titleWeight, fs.titleItalic)
+        : fontSpec(fs.title, s * 0.55, fs.titleWeight, fs.titleItalic);
   const lines = outro ? messageLines(ctx, info, fontSpec(fs.body, 40, fs.bodyWeight), 1400, 4) : [];
   const ty = outro ? H / 2 - 170 - lines.length * 22 : H / 2 - 150;
   const tOn = neonOn(u, 0.35 * f, 3);
@@ -608,7 +792,7 @@ function neon(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bool
   }
   const nOn = neonOn(u, (outro ? 2.6 : 1.4) * f, 23);
   neonPaint(env, nOn, c.accent, (core) => {
-    drawNamesRow(env, info, CX, y, outro ? 56 : 76, (s) => fontSpec(fs.body, s, fs.nameWeight), core ? '#ffffff' : c.accent, core ? '#ffffff' : c.accent);
+    drawNamesRow(env, info, CX, y, outro ? 56 : 76, nameFont(theme), core ? '#ffffff' : c.accent, core ? '#ffffff' : c.accent);
   });
   const sub = outro ? info.outroNotice.trim() : [formatKoreanDate(info.date, info.time), info.venue.trim()].filter(Boolean).join('  ·  ');
   const sa = appear(u, (outro ? 3.2 : 2.1) * f, 1);
@@ -643,21 +827,22 @@ function camcorder(env: TextEnv, info: WeddingInfo, u: number, f: number, outro:
   const hangulTitle = HANGUL.test(title);
   const mono = (s: number) => fontSpec(fs.mono, s);
   const body = (w: number) => (s: number) => fontSpec(fs.body, s, w);
+  const nameF = nameFont(theme);
   const lines: TypeLine[] = [
-    { text: hangulTitle ? title : title.toUpperCase(), make: hangulTitle ? body(fs.nameWeight) : mono, size: hangulTitle ? 84 : 124, h: 150, y: 0 },
+    { text: hangulTitle ? title : title.toUpperCase(), make: hangulTitle ? nameF : mono, size: hangulTitle ? 84 : 124, h: 150, y: 0 },
   ];
   const add = (text: string, make: (s: number) => string, size: number, h: number) => lines.push({ text, make, size, h, y: 0 });
   const g = info.groom.trim();
   const b = info.bride.trim();
   const names = g && b ? `${g} & ${b}` : g || b;
   if (!outro) {
-    if (names) add(names, body(fs.nameWeight), 70, 100);
+    if (names) add(names, nameF, 70, 100);
     const d = dateParts(info);
     if (d) add(`${d.dot} ${d.week}${d.time ? ` ${d.time}` : ''}`, mono, 62, 90);
     if (info.venue.trim()) add(info.venue.trim(), body(fs.bodyWeight), 40, 70);
   } else {
     for (const m of messageLines(ctx, info, fontSpec(fs.body, 40, fs.bodyWeight), 1400, 3)) add(m, body(fs.bodyWeight), 40, 64);
-    if (names) add(names, body(fs.nameWeight), 56, 96);
+    if (names) add(names, nameF, 56, 96);
     if (info.outroNotice.trim()) add(info.outroNotice.trim(), body(fs.bodyWeight), 36, 70);
   }
   const total = lines.reduce((a, l) => a + l.h, 0);
@@ -666,7 +851,9 @@ function camcorder(env: TextEnv, info: WeddingInfo, u: number, f: number, outro:
     l.y = y + l.h / 2;
     y += l.h;
   }
-  const cps = 17 / Math.max(0.45, f);
+  // 짧은 예시 영상(f < 1)에서는 더 빨리 쳐서 장면 가운데쯤 글이 다 보이게 (실제 영상 f = 1은 그대로)
+  const cps = 17 / Math.max(0.3, f);
+  const linePause = 0.25 * Math.max(0.4, Math.min(1, f));
   ctx.save();
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
@@ -688,7 +875,7 @@ function camcorder(env: TextEnv, info: WeddingInfo, u: number, f: number, outro:
     ctx.fillText(shown, x, l.y);
     cursor = { x: x + ctx.measureText(shown).width + 8, y: l.y, h: size * 0.78 };
     if (n < chars.length) break;
-    start += chars.length / cps + 0.25;
+    start += chars.length / cps + linePause;
   }
   if (cursor && Math.floor(u * 2.2) % 2 === 0) {
     ctx.fillStyle = c.text;
@@ -753,7 +940,7 @@ function wreath(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bo
   const sp = Math.max(0.55, f);
   const base = ctx.globalAlpha;
   const title = titleOf(env, info, outro);
-  const titleFont = (s: number) => (HANGUL.test(title) ? fontSpec(fs.body, s * 0.6, fs.nameWeight) : fontSpec(fs.title, s, fs.titleWeight, fs.titleItalic));
+  const titleFont = (s: number) => (HANGUL.test(title) ? nameFont(theme)(s * 0.6) : fontSpec(fs.title, s, fs.titleWeight, fs.titleItalic));
   const body = (s: number, w = fs.bodyWeight) => fontSpec(fs.body, s, w);
   ctx.save();
   ctx.textAlign = 'center';
@@ -778,7 +965,7 @@ function wreath(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bo
     const b = info.bride.trim();
     if (g && at(1.3) > 0) {
       ctx.fillStyle = c.text;
-      fitFont(ctx, g, 360, (s) => body(s, fs.nameWeight), 60);
+      fitFont(ctx, g, 360, nameFont(theme), 60);
       ctx.fillText(g, CX, b ? cy - 62 : cy);
     }
     if (g && b && at(1.5) > 0) {
@@ -788,7 +975,7 @@ function wreath(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bo
     }
     if (b && at(1.7) > 0) {
       ctx.fillStyle = c.text;
-      fitFont(ctx, b, 360, (s) => body(s, fs.nameWeight), 60);
+      fitFont(ctx, b, 360, nameFont(theme), 60);
       ctx.fillText(b, CX, g ? cy + 66 : cy);
     }
     const date = formatKoreanDate(info.date, info.time);
@@ -809,7 +996,8 @@ function wreath(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bo
     wreathRing(ctx, CX, cy, R, easeInOutSine((u - 1 * f) / (1.6 * sp)), c.accent, '#ffffff');
     if (at(1.4) > 0) {
       ctx.fillStyle = c.accent;
-      fitFont(ctx, title, 250, titleFont, 76);
+      // 고리 안쪽 잎 사이 빈 폭(약 237px)보다 좁게 맞춰 필기체 끝획이 잎에 닿지 않게
+      fitFont(ctx, title, 220, titleFont, 76);
       ctx.fillText(title, CX, cy + 4);
     }
     const lines = messageLines(ctx, info, body(42), 1400, 3);
@@ -822,7 +1010,7 @@ function wreath(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bo
       }
       y += 64;
     });
-    if (at(3) > 0) drawNamesRow(env, info, CX, y + 24, 50, (s) => body(s, fs.nameWeight), c.text, c.accent);
+    if (at(3) > 0) drawNamesRow(env, info, CX, y + 24, 50, nameFont(theme), c.text, c.accent);
     const notice = info.outroNotice.trim();
     if (notice && at(3.8) > 0) {
       ctx.globalAlpha *= 0.8 + 0.2 * Math.sin(u * 2.2);
@@ -871,7 +1059,7 @@ function exhibition(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
     ctx.restore();
   };
   const title = titleOf(env, info, outro);
-  const titleFont = (s: number) => (HANGUL.test(title) ? fontSpec(fs.body, s * 0.62, fs.nameWeight) : fontSpec(fs.title, s, fs.titleWeight, true));
+  const titleFont = (s: number) => (HANGUL.test(title) ? nameFont(theme)(s * 0.62) : fontSpec(fs.title, s, fs.titleWeight, fs.titleCustom ? fs.titleItalic : true));
   const body = (s: number, w = fs.bodyWeight) => fontSpec(fs.body, s, w);
   const label = (text: string, y: number) => {
     ctx.fillStyle = c.sub;
@@ -886,7 +1074,7 @@ function exhibition(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
       fitFont(ctx, title, 1200, titleFont, 170);
       ctx.fillText(title, x0 - 6, H / 2 - 118);
     });
-    wipe(1.2, H / 2 + 12, 90, () => drawNamesRow(env, info, x0, H / 2 + 12, 58, (s) => body(s, fs.nameWeight), c.text, c.accent, 'left', 1100));
+    wipe(1.2, H / 2 + 12, 90, () => drawNamesRow(env, info, x0, H / 2 + 12, 58, nameFont(theme), c.text, c.accent, 'left', 1100));
     const d = dateParts(info);
     const rows: [string, string][] = [];
     if (d) rows.push(['DATE', `${d.dot} ${d.week}${d.time ? `  ${d.time}` : ''}`]);
@@ -933,7 +1121,7 @@ function exhibition(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
       });
       y += 60;
     });
-    wipe(2.9, y + 30, 80, () => drawNamesRow(env, info, x0, y + 30, 50, (s) => body(s, fs.nameWeight), c.text, c.accent, 'left', 1100));
+    wipe(2.9, y + 30, 80, () => drawNamesRow(env, info, x0, y + 30, 50, nameFont(theme), c.text, c.accent, 'left', 1100));
     const notice = info.outroNotice.trim();
     if (notice)
       wipe(3.6, y + 112, 60, () => {
@@ -945,6 +1133,22 @@ function exhibition(env: TextEnv, info: WeddingInfo, u: number, f: number, outro
   ctx.restore();
 }
 
+/** 오프닝·엔딩 글자 크기 배율을 화면 가운데 기준으로 적용 */
+export function withTextScale(env: TextEnv, fn: () => void): void {
+  const s = env.theme.textScale;
+  if (!s || s === 1) {
+    fn();
+    return;
+  }
+  const { ctx } = env;
+  ctx.save();
+  ctx.translate(CX, H / 2);
+  ctx.scale(s, s);
+  ctx.translate(-CX, -H / 2);
+  fn();
+  ctx.restore();
+}
+
 /** 클래식 외 디자인의 오프닝 문구 */
 export function drawDesignedIntro(env: TextEnv, info: WeddingInfo, u: number, dur: number, pace: number): void {
   const f = Math.min(1, pace);
@@ -952,7 +1156,7 @@ export function drawDesignedIntro(env: TextEnv, info: WeddingInfo, u: number, du
   if (fadeOut <= 0) return;
   env.ctx.save();
   env.ctx.globalAlpha = fadeOut;
-  draw(env, info, u, f, false);
+  withTextScale(env, () => draw(env, info, u, f, false));
   env.ctx.restore();
 }
 
@@ -960,7 +1164,7 @@ export function drawDesignedIntro(env: TextEnv, info: WeddingInfo, u: number, du
 export function drawDesignedOutro(env: TextEnv, info: WeddingInfo, u: number, pace: number): void {
   env.ctx.save();
   env.ctx.globalAlpha = 1;
-  draw(env, info, u, Math.min(1, pace), true);
+  withTextScale(env, () => draw(env, info, u, Math.min(1, pace), true));
   env.ctx.restore();
 }
 
@@ -987,6 +1191,27 @@ function draw(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bool
     case 'exhibition':
       exhibition(env, info, u, f, outro);
       break;
+    case 'bubbly':
+      bubbly(env, info, u, f, outro);
+      break;
+    case 'hanji':
+      hanji(env, info, u, f, outro);
+      break;
+    case 'cover':
+      cover(env, info, u, f, outro);
+      break;
+    case 'storybook':
+      storybook(env, info, u, f, outro);
+      break;
+    case 'monogram':
+      monogram(env, info, u, f, outro);
+      break;
+    case 'postcard':
+      postcard(env, info, u, f, outro);
+      break;
+    case 'sunburst':
+      sunburst(env, info, u, f, outro);
+      break;
     case 'classic':
       break;
   }
@@ -999,4 +1224,5 @@ export const DESIGN_TEXTS = [
   WEEK.join(' '),
   'JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC',
   "0123456789 ' . : / | & × · -",
+  'and',
 ];

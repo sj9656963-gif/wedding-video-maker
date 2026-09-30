@@ -22,7 +22,21 @@ export type { SceneEnv } from './draw-utils';
 type MotionSt = ReturnType<typeof motionState>;
 
 /** 들어오는 장면을 선명한 채로 공간적으로 드러내는 전환 */
-const REVEAL_TRANSITIONS: ReadonlySet<TransitionType> = new Set<TransitionType>(['veil', 'iris', 'wipe', 'push', 'zoom', 'glitch', 'tracking', 'ink', 'blinds']);
+const REVEAL_TRANSITIONS: ReadonlySet<TransitionType> = new Set<TransitionType>([
+  'veil',
+  'iris',
+  'wipe',
+  'push',
+  'zoom',
+  'glitch',
+  'tracking',
+  'ink',
+  'blinds',
+  'slide',
+  'split',
+  'mosaic',
+  'clock',
+]);
 
 /** 그림자와 (테마에 따라) 흰 테두리가 있는 사진 카드 */
 function drawCard(env: SceneEnv, img: NonNullable<ReturnType<SceneEnv['assets']['image']>>, cx: number, cy: number, w: number, h: number): void {
@@ -46,10 +60,12 @@ function drawBlurBackground(env: SceneEnv, id: string, st: MotionSt): void {
   ctx.fillRect(0, 0, W, H);
 }
 
-/** 사진 문구가 나타나는 정도 (장면이 자리 잡은 뒤 천천히) */
+/** 사진 문구가 나타나는 정도 (장면이 자리 잡은 뒤 천천히, 짧은 장면에서도 가운데쯤엔 다 보이게) */
 function captionAlpha(time: SceneTime, delay = 0.35): number {
-  const start = (time.reveal ? 0 : time.tin) + delay;
-  return smoothstep(start, start + 0.8, time.u);
+  const FADE = 0.8;
+  // 겹치며 들어오는 전환(디졸브 등)은 전환이 반쯤 지나 사진이 충분히 보일 때부터 (다른 배치와 같은 박자)
+  const start = Math.min((time.reveal ? 0 : time.tin * 0.4) + delay, Math.max(0, time.dur * 0.45 - FADE));
+  return smoothstep(start, start + FADE, time.u);
 }
 
 /** 화면 가득 찬 사진 아래쪽 가운데의 사진 문구 (레터박스·캠코더 표시 위로) */
@@ -115,15 +131,17 @@ function drawContain(env: SceneEnv, seg: PhotoSegment, st: MotionSt, time: Scene
   const cap = captionOf(env, id);
   const b = env.theme.photoBorder;
   const capSpace = cap ? 104 : 0;
-  // 레터박스가 있으면 그 안쪽에, 문구가 있으면 캠코더·디카 날짜 표시보다 위에서 끝나게
+  // 레터박스가 있으면 그 안쪽에. 문구가 있으면 캠코더·디카 날짜 표시보다 위에서 끝나고,
+  // 그만큼 위로 몰리지 않게 캠코더 REC 줄 아래에서 시작
+  const top = cap ? Math.max(ins.top, ins.hudTop) : ins.top;
   const bottom = cap ? Math.max(ins.bottom, ins.hud) : ins.bottom;
-  const band = H - ins.top - bottom;
+  const band = H - top - bottom;
   const maxH = band * (ins.top ? 0.9 : 0.86) - capSpace;
   const fit = Math.min((W * 0.9 - b * 2) / img.width, (maxH - b * 2) / img.height);
   const cs = 1 + (st.s - 1) * 0.35;
   const w = img.width * fit * cs;
   const h = img.height * fit * cs;
-  const cy = ins.top + (band - capSpace) / 2;
+  const cy = top + (band - capSpace) / 2;
   drawCard(env, img, W / 2, cy, w, h);
   if (cap) drawCardCaption(env, cap, W / 2, cy + h / 2 + b + 60, W * 0.8, time);
 }

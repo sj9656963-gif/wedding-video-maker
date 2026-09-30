@@ -48,7 +48,7 @@ try {
   const specs = await generateFixtures(page, fixDir);
   await page.reload();
   await page.waitForSelector('#theme-list .theme-card');
-  check('스타일 10종 표시', (await page.locator('#theme-list .theme-card').count()) === 10);
+  check('스타일 17종 표시', (await page.locator('#theme-list .theme-card').count()) === 17);
   check('지원 경고 없음', await page.locator('#support-warning').isHidden());
   await page.screenshot({ path: out('01-initial.png'), fullPage: true });
 

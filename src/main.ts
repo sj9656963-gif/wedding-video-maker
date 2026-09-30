@@ -2,9 +2,9 @@
 
 import './style.css';
 import { PhotoLibrary, ResolutionCache } from './assets';
-import { StyleDemo, demoInfo, renderPoster, sampleAssets, sampleThumb } from './demo';
+import { StyleDemo, demoInfo, renderPoster, sampleAssets, sampleThumb, type DemoFocus } from './demo';
 import { collectTexts } from './draw-text';
-import { ensureFonts } from './fonts';
+import { ensureFonts, fontsReady } from './fonts';
 import { formatTime, safeFileName } from './format';
 import { decodeMusicFile, loadDefaultMusic, mixMusic, musicTotalDuration, type MusicTrack } from './music';
 import { fileKey, importPhotos, isImageFile, sortPhotos, type SortMode } from './photos';
@@ -12,9 +12,23 @@ import { PreviewPlayer, type PreviewAudio } from './preview';
 import { initPwa } from './pwa';
 import type { RenderContext } from './renderer';
 import { loadSettings, saveSettings, type DurationMode } from './settings-store';
-import { DEFAULT_THEME_ID, PARTICLES, THEMES, TITLE_DESIGNS, baseTheme, resolveTheme, type ParticleKind, type Theme, type TitleDesign } from './themes';
+import { SUGGESTIONS, type SuggestField } from './suggestions';
+import {
+  DEFAULT_THEME_ID,
+  STRUCTURAL_KEYS,
+  THEMES,
+  baseTheme,
+  resolveTheme,
+  sanitizeCustom,
+  type CustomKey,
+  type Customization,
+  type Theme,
+  type TitleDesign,
+} from './themes';
 import { initSite } from './site/site';
+import { CUSTOM_FOCUS, Customizer } from './ui/customizer';
 import { StylePicker } from './ui/style-picker';
+import { attachSuggestions, type Suggest } from './ui/suggest';
 import {
   MIN_VIDEO_DURATION,
   autoDuration,
@@ -39,6 +53,7 @@ const DEFAULT_INFO: WeddingInfo = {
   time: '',
   venue: '',
   introTitle: '',
+  outroTitle: '',
   outroMessage: '귀한 걸음 해 주셔서 진심으로 감사합니다.\n따뜻한 마음으로 저희의 새 출발을 축복해 주세요.',
   outroNotice: '잠시 후 예식이 시작됩니다',
   // 영상 중간 문구는 직접 쓴 경우에만 넣음 (기본 문구 없음)
@@ -68,8 +83,11 @@ function savedDuration(v: unknown): DurationMode {
   return 'auto';
 }
 
-const savedTitle = (v: unknown): TitleDesign | 'auto' => (TITLE_DESIGNS.some((d) => d.id === v) ? (v as TitleDesign) : 'auto');
-const savedParticle = (v: unknown): ParticleKind | 'auto' => (PARTICLES.some((p) => p.id === v) ? (v as ParticleKind) : 'auto');
+/** 꾸미기 저장값 (예전 버전의 오프닝 디자인·효과 선택도 이어받음) */
+function savedCustom(): Customization {
+  if (saved.custom && typeof saved.custom === 'object') return sanitizeCustom(saved.custom);
+  return sanitizeCustom({ title: saved.titleDesign, particle: saved.particle });
+}
 
 const state = {
   photos: [] as PhotoItem[],
@@ -78,8 +96,7 @@ const state = {
   info: savedInfo(),
   themeId: baseTheme(saved.themeId ?? DEFAULT_THEME_ID).id as string,
   variantId: (typeof saved.variantId === 'string' ? saved.variantId : null) as string | null,
-  titleDesign: savedTitle(saved.titleDesign),
-  particle: savedParticle(saved.particle),
+  custom: savedCustom(),
   groupPhotos: saved.groupPhotos ?? true,
   durationMode: savedDuration(saved.durationMode),
   musicMode: 'default' as 'default' | 'custom',
@@ -95,6 +112,9 @@ let exporting = false;
 let nextAddedIndex = 0;
 let photoDates = new Map<string, number | null>();
 let captions = new Map<string, string>();
+/** 꾸미기 칩에 마우스를 올려 둔 동안 미리 보여 줄 꾸미기 (적용 전) */
+let hoverCustom: Customization | null = null;
+let hoverKey: CustomKey | null = null;
 
 const library = new PhotoLibrary();
 const previewCanvas = $<HTMLCanvasElement>('preview');
@@ -105,17 +125,31 @@ const persist = debounce(() => {
     info: state.info,
     themeId: state.themeId,
     variantId: state.variantId,
-    titleDesign: state.titleDesign,
-    particle: state.particle,
+    custom: { ...state.custom },
     groupPhotos: state.groupPhotos,
     durationMode: state.durationMode,
     quality: state.quality,
   });
 }, 400);
 
-/** 스타일 + 양식 + 오프닝/효과 선택을 합친 현재 테마 */
+/** 스타일 + 양식 + 꾸미기를 합친 현재 테마 */
 function currentTheme(): Theme {
-  return resolveTheme(state.themeId, { variant: state.variantId, title: state.titleDesign, particle: state.particle });
+  return resolveTheme(state.themeId, { variant: state.variantId, ...state.custom });
+}
+
+/** 꾸미기 없이 스타일·양식만 (꾸미기의 '추천' 표시용) */
+function plainTheme(): Theme {
+  return resolveTheme(state.themeId, { variant: state.variantId });
+}
+
+/** 예시 영상에 보여 줄 테마: 마우스를 올려 둔 꾸미기가 있으면 그것까지 */
+function demoTheme(): Theme {
+  return hoverCustom ? resolveTheme(state.themeId, { variant: state.variantId, ...hoverCustom }) : currentTheme();
+}
+
+/** 내 영상 미리보기 테마: 장면 구성을 바꾸지 않는 꾸미기만 미리 보여 줌 */
+function previewTheme(): Theme {
+  return hoverCustom && hoverKey && !STRUCTURAL_KEYS.has(hoverKey) ? demoTheme() : currentTheme();
 }
 
 // ───────────────────────── 타임라인 ─────────────────────────
@@ -297,7 +331,9 @@ function setOutro(id: string): void {
 /** 미리보기를 이 사진이 나오는 장면으로 */
 function selectPhoto(id: string): void {
   const seg = timeline?.segments.find((s) => s.kind === 'photo' && s.photoIds.includes(id));
-  if (seg) player.seek(seg.start + (seg.transitionIn?.duration ?? 0) + 0.3);
+  if (!seg) return;
+  setLiveTab('mine');
+  player.seek(seg.start + (seg.transitionIn?.duration ?? 0) + 0.3);
 }
 
 /** 실제 영상에 쓰이는 오프닝·엔딩 사진 */
@@ -349,7 +385,7 @@ const editor = new PhotoEditor({
   },
   onView(id) {
     selectPhoto(id);
-    if (narrow.matches) openPreviewSheet();
+    if (narrow.matches && !liveInView) openPreviewSheet();
   },
   onClose(id) {
     if (id && state.photos.some((p) => p.id === id)) grid.focus(id);
@@ -385,6 +421,9 @@ function removePhotos(ids: readonly string[]): void {
     state.sort = null;
     updateSortChips();
     setStatus(importStatus, '');
+    // 사진이 없으면 내 영상 화면은 비어 있으므로 스타일 예시로
+    setLiveTab('demo');
+    mineAutoShown = false;
   }
   rebuild();
 }
@@ -434,6 +473,11 @@ async function doImport(files: readonly File[]): Promise<void> {
   setStatus(importStatus, msgs.join(' '), res.failed.length ? 'warn' : added.length ? 'ok' : '');
   rebuild();
   refreshFonts();
+  // 처음 사진을 올리면 미리보기를 '내 영상'으로 바꿔 올린 사진으로 보여 줌
+  if (added.length && !mineAutoShown && timeline) {
+    mineAutoShown = true;
+    setLiveTab('mine');
+  }
 }
 
 function seekToOutro(): void {
@@ -441,7 +485,6 @@ function seekToOutro(): void {
   const outro = timeline.segments[timeline.segments.length - 1];
   player.seek(Math.min(outro.start + 6.5, timeline.duration - 3));
 }
-
 
 for (const chip of sortChips) {
   chip.addEventListener('click', () => {
@@ -507,9 +550,113 @@ window.addEventListener('drop', (e) => {
   });
 });
 
+// ───────────────────────── 미리보기 자리 (스타일 예시 / 내 영상) ─────────────────────────
+// 넓은 화면: 오른쪽 패널에 붙어 있음. 휴대폰: 스타일·꾸미기·문구 카드 위쪽에 붙어 스크롤해도 보임.
+
+const narrow = window.matchMedia('(max-width: 1080px)');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const liveBox = $('live-box');
+const liveHome = $('live-home');
+const liveMobile = $('live-mobile');
+const tabDemo = $<HTMLButtonElement>('tab-demo');
+const tabMine = $<HTMLButtonElement>('tab-mine');
+const paneDemo = $('pane-demo');
+const paneMine = $('pane-mine');
+const collapseBtn = $<HTMLButtonElement>('live-collapse');
+const toastEl = $('apply-toast');
+type LiveTab = 'demo' | 'mine';
+let liveTab: LiveTab = 'demo';
+/** 처음 사진을 올렸을 때 한 번만 '내 영상'으로 자동 전환 */
+let mineAutoShown = false;
+let liveInView = false;
+
+function placeLive(): void {
+  const target = narrow.matches ? liveMobile : liveHome;
+  if (liveBox.parentElement !== target) target.append(liveBox);
+}
+
+function setLiveTab(tab: LiveTab, focusTab = false): void {
+  liveTab = tab;
+  for (const [t, btn, pane] of [
+    ['demo', tabDemo, paneDemo],
+    ['mine', tabMine, paneMine],
+  ] as const) {
+    const on = t === tab;
+    btn.setAttribute('aria-selected', String(on));
+    btn.tabIndex = on ? 0 : -1;
+    pane.hidden = !on;
+    if (on && focusTab) btn.focus();
+  }
+  if (tab === 'mine') player.refresh();
+  else player.pause();
+  if (liveBox.classList.contains('collapsed')) setCollapsed(false);
+  updateFab();
+}
+
+tabDemo.addEventListener('click', () => setLiveTab('demo'));
+tabMine.addEventListener('click', () => setLiveTab('mine'));
+for (const btn of [tabDemo, tabMine]) {
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    setLiveTab(liveTab === 'demo' ? 'mine' : 'demo', true);
+  });
+}
+
+function setCollapsed(collapsed: boolean): void {
+  liveBox.classList.toggle('collapsed', collapsed);
+  collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+}
+collapseBtn.addEventListener('click', () => setCollapsed(!liveBox.classList.contains('collapsed')));
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+const previewFrame = previewCanvas.parentElement as HTMLElement;
+/** 미리보기 아래쪽에 잠깐 뜨는 '적용됨' 안내 (제목·이름이 있는 가운데를 가리지 않게, 보이는 화면 안에) */
+function toast(message: string): void {
+  const host = liveTab === 'mine' && !sheet.open ? previewFrame : demoStage;
+  if (toastEl.parentElement !== host) host.append(toastEl);
+  toastEl.textContent = `✓ ${message}`;
+  toastEl.classList.add('on');
+  host.classList.add('toasting');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove('on');
+    host.classList.remove('toasting');
+  }, 2300);
+}
+
+/** 내 영상 미리보기를 바꾼 항목이 보이는 장면으로 (재생 중이면 그대로) */
+function seekMine(target: DemoFocus): void {
+  if (!timeline || player.isPlaying || liveTab !== 'mine') return;
+  const segs = timeline.segments;
+  const sceneAt = (i: number) => {
+    const s = segs[Math.min(i, segs.length - 2)];
+    if (s) player.seek(s.start + (s.transitionIn?.duration ?? 0) + Math.min(1.5, (s.end - s.start) / 3));
+  };
+  if (target === 'intro') player.seek(4.5);
+  else if (target === 'outro') seekToOutro();
+  else if (target === 'quote') seekToQuote();
+  else if (target === 'transition') {
+    const s = segs[2] ?? segs[1];
+    if (s?.transitionIn) player.seek(s.start + s.transitionIn.duration * 0.5);
+  } else if (target === 'caption') {
+    const s = segs.find((x) => x.kind === 'photo' && x.photoIds.some((id) => captions.has(id)));
+    if (s) player.seek(s.start + (s.transitionIn?.duration ?? 0) + 1.2);
+    else sceneAt(1);
+  } else sceneAt(1);
+}
+
+/** 바꾼 항목을 두 미리보기 모두에서 바로 보여 줌 */
+function showChange(target: DemoFocus, holdMs: number): void {
+  if (demoReady) demo.focus(target, holdMs);
+  seekMine(target);
+}
+const HOLD_MS: Record<DemoFocus, number> = { intro: 2600, outro: 2600, caption: 2600, quote: 2600, scene: 0, transition: 0 };
+
 // ───────────────────────── 문구 ─────────────────────────
 
-const FIELDS: [string, keyof WeddingInfo, 'intro' | 'outro' | 'story'][] = [
+type Where = 'intro' | 'outro' | 'story';
+const FIELDS: [string, keyof WeddingInfo, Where][] = [
   ['f-groom', 'groom', 'intro'],
   ['f-bride', 'bride', 'intro'],
   ['f-date', 'date', 'intro'],
@@ -517,13 +664,22 @@ const FIELDS: [string, keyof WeddingInfo, 'intro' | 'outro' | 'story'][] = [
   ['f-venue', 'venue', 'intro'],
   ['f-intro-title', 'introTitle', 'intro'],
   ['f-quotes', 'quotes', 'story'],
+  ['f-outro-title', 'outroTitle', 'outro'],
   ['f-outro-message', 'outroMessage', 'outro'],
   ['f-outro-notice', 'outroNotice', 'outro'],
 ];
+const focusOfWhere = (w: Where): DemoFocus => (w === 'intro' ? 'intro' : w === 'outro' ? 'outro' : 'quote');
 
 function refreshFonts(): void {
   const theme = currentTheme();
-  void ensureFonts(theme, collectTexts(theme, state.info, captionTexts())).then(() => player.refresh());
+  void ensureFonts(theme, collectTexts(theme, state.info, captionTexts())).then(() => {
+    player.refresh();
+    if (demoReady) demo.redraw();
+  });
+  const info = demoInfo(state.info);
+  void ensureFonts(theme, collectTexts(theme, info)).then(() => {
+    if (demoReady) demo.redraw();
+  });
 }
 const refreshFontsSoon = debounce(refreshFonts, 350);
 
@@ -533,6 +689,15 @@ function seekToQuote(): void {
   const seg = timeline.segments.find((s) => s.kind === 'photo' && s.quote);
   if (seg) player.seek(seg.start + (seg.transitionIn?.duration ?? 0) + 2.2);
 }
+
+const suggests = new Map<string, Suggest>();
+const SUGGEST_FIELDS: [string, string, SuggestField, 'replace' | 'line', string, number][] = [
+  ['f-intro-title', 'sg-intro-title', 'introTitle', 'replace', '오프닝 제목 예시', 0],
+  ['f-quotes', 'sg-quotes', 'quotes', 'line', '영상 중간 문구 예시', 4],
+  ['f-outro-title', 'sg-outro-title', 'outroTitle', 'replace', '엔딩 제목 예시', 0],
+  ['f-outro-message', 'sg-outro-message', 'outroMessage', 'replace', '엔딩 인사말 예시', 0],
+  ['f-outro-notice', 'sg-outro-notice', 'outroNotice', 'replace', '엔딩 안내 문구 예시', 0],
+];
 
 for (const [id, key, where] of FIELDS) {
   const el = $<HTMLInputElement | HTMLTextAreaElement>(id);
@@ -544,22 +709,36 @@ for (const [id, key, where] of FIELDS) {
     if (key === 'quotes') rebuildSoon();
     else player.refresh();
     refreshFontsSoon();
-    if (key === 'groom' || key === 'bride' || key === 'date' || key === 'introTitle') demoInfoSoon();
+    demoInfoSoon(focusOfWhere(where));
+    suggests.get(id)?.refresh();
   });
   // 입력하는 문구가 보이는 장면으로 미리보기 이동
-  el.addEventListener('focus', () => {
-    if (!timeline || player.isPlaying) return;
-    if (where === 'intro') player.seek(4.5);
-    else if (where === 'story') seekToQuote();
-    else seekToOutro();
-  });
+  el.addEventListener('focus', () => showChange(focusOfWhere(where), 3200));
+}
+
+for (const [fieldId, hostId, key, mode, label, fillAll] of SUGGEST_FIELDS) {
+  const where = FIELDS.find((f) => f[0] === fieldId)?.[2] ?? 'intro';
+  suggests.set(
+    fieldId,
+    attachSuggestions($(hostId), {
+      field: $<HTMLInputElement | HTMLTextAreaElement>(fieldId),
+      items: SUGGESTIONS[key],
+      mode,
+      label,
+      fillAll,
+      perPage: key === 'outroMessage' ? 2 : 4,
+      onApply: () => {
+        toast(`${label.replace(' 예시', '')}에 예시 문구를 넣었어요`);
+        showChange(focusOfWhere(where), 3200);
+      },
+    }),
+  );
 }
 
 // ───────────────────────── 스타일 (예시 영상 + 카드) ─────────────────────────
 
 const PAUSE_ICON = 'M7 5h4v14H7zM13 5h4v14h-4z';
 const PLAY_ICON = 'M8 5v14l11-7z';
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const demoCanvas = $<HTMLCanvasElement>('style-demo');
 const demoStage = $('style-stage');
 const demoName = $('style-demo-name');
@@ -591,25 +770,35 @@ function updateDemoPlayback(): void {
   else demo.pause();
 }
 
-function showDemo(theme: Theme): void {
+function demoLabel(theme: Theme): string {
   const variant = theme.variants.find((v) => v.id === theme.variantId);
-  demoName.textContent = `${theme.name}${variant && theme.variants.length > 1 ? ` · ${variant.name}` : ''} 예시`;
+  return `${theme.name}${variant && theme.variants.length > 1 ? ` · ${variant.name}` : ''} 예시`;
+}
+
+/** 예시 영상에 테마 적용. restart면 처음부터, focus가 있으면 그 장면으로 바로 이동 */
+function showDemo(theme: Theme, opts: { restart?: boolean; focus?: DemoFocus; hold?: number } = {}): void {
+  demoName.textContent = demoLabel(theme);
   demoCanvas.setAttribute('aria-label', `${theme.name} 스타일 예시 영상: ${theme.highlights.join(', ')}`);
   if (!demoReady) return;
-  demo.setTheme(theme, demoInfo(state.info));
-  if (demoUserPaused) demo.showPoster();
+  demo.setTheme(theme, demoInfo(state.info), opts.restart ?? false);
+  if (opts.focus) demo.focus(opts.focus, opts.hold ?? 0);
+  else if (demoUserPaused && opts.restart) demo.showPoster();
   updateDemoPlayback();
 }
 
-const demoInfoSoon = debounce(() => {
+const demoInfoSoon = debounce((focus?: DemoFocus) => {
   if (!demoReady) return;
-  demo.setInfo(demoInfo(state.info));
-  heroDemo.setInfo(demoInfo(state.info));
+  const info = demoInfo(state.info);
+  demo.setInfo(info);
+  heroDemo.setInfo(info);
+  if (focus && document.activeElement?.matches('input, textarea')) demo.focus(focus, 3200);
+  customizer.invalidatePosters();
 }, 400);
 
 demoToggle.addEventListener('click', () => {
   demoUserPaused = !demoUserPaused;
   syncDemoToggle();
+  if (!demoUserPaused) demo.release();
   updateDemoPlayback();
 });
 new IntersectionObserver(
@@ -622,25 +811,92 @@ new IntersectionObserver(
 document.addEventListener('visibilitychange', updateDemoPlayback);
 
 const picker = new StylePicker({
-  initial: { themeId: state.themeId, variantId: state.variantId, title: state.titleDesign, particle: state.particle },
+  initial: { themeId: state.themeId, variantId: state.variantId },
   poster: (t, w, ph) => renderPoster(t, demoInfo(state.info), w, ph),
   onChange: (sel, what) => {
     state.themeId = sel.themeId;
     state.variantId = sel.variantId;
-    state.titleDesign = sel.title;
-    state.particle = sel.particle;
     persist();
     // 스타일·양식은 전환·배치가 달라지므로 영상 구성을 다시 계산
-    if (what === 'theme' || what === 'variant') rebuild();
-    else player.refresh();
+    rebuild();
     refreshFonts();
-    showDemo(currentTheme());
+    customizer.refresh();
+    const theme = currentTheme();
+    showDemo(theme, { restart: true });
+    if (liveTab === 'mine' && timeline && !player.isPlaying) player.seek(4.5);
+    toast(what === 'theme' ? `${theme.name} 스타일 적용` : `양식 · ${theme.variants.find((v) => v.id === theme.variantId)?.name ?? ''} 적용`);
+  },
+});
+
+const customizer = new Customizer({
+  initial: state.custom,
+  plain: plainTheme,
+  designPoster: (design: TitleDesign, w, ph) =>
+    renderPoster(resolveTheme(state.themeId, { variant: state.variantId, ...state.custom, title: design }), demoInfo(state.info), w, ph, 'intro'),
+  onChange: (custom, key, message) => {
+    state.custom = custom;
+    hoverCustom = null;
+    hoverKey = null;
+    persist();
+    if (STRUCTURAL_KEYS.has(key)) rebuild();
+    else player.refresh();
+    const theme = currentTheme();
+    const target = CUSTOM_FOCUS[key];
+    showDemo(theme, { focus: target, hold: HOLD_MS[target] });
+    seekMine(target);
+    refreshFonts();
+    if (key !== 'title') customizer.invalidatePosters();
+    toast(message);
+  },
+  onPreview: (next, key) => {
+    hoverCustom = next;
+    hoverKey = key;
+    if (!demoReady) return;
+    const info = demoInfo(state.info);
+    if (next && key) {
+      const theme = demoTheme();
+      const target = CUSTOM_FOCUS[key];
+      const apply = () => {
+        if (hoverCustom !== next) return;
+        demo.setTheme(theme, info, false);
+        demo.focus(target, Infinity);
+        if (!STRUCTURAL_KEYS.has(key)) {
+          player.refresh();
+          seekMine(target);
+        }
+      };
+      const texts = collectTexts(theme, info);
+      if (fontsReady(theme, texts)) apply();
+      else void ensureFonts(theme, texts, 4000).then(apply);
+    } else {
+      demo.setTheme(currentTheme(), info, false);
+      demo.release(600);
+      player.refresh();
+    }
   },
 });
 
 // ───────────────────────── 홈 화면 라이브 데모 (스타일을 차례로 보여줌) ─────────────────────────
 
-const HERO_ORDER = ['romantic', 'cinema', 'street', 'garden', 'neon', 'camcorder', 'gallery', 'classic', 'film', 'modern'];
+const HERO_ORDER = [
+  'classic',
+  'lovely',
+  'cinema',
+  'romantic',
+  'fairytale',
+  'street',
+  'royal',
+  'garden',
+  'editorial',
+  'traditional',
+  'neon',
+  'summer',
+  'retro',
+  'camcorder',
+  'gallery',
+  'film',
+  'modern',
+];
 const heroCanvas = $<HTMLCanvasElement>('hero-demo');
 const heroDemo = new StyleDemo(heroCanvas);
 const heroName = $('hero-demo-name');
@@ -681,17 +937,23 @@ const site = initSite({
 /** 샘플 그림·글꼴을 준비한 뒤 카드 그림과 예시 영상을 만듦 */
 async function initStyleDemos(): Promise<void> {
   const info = demoInfo(state.info);
+  const first = currentTheme();
+  await ensureFonts(first, collectTexts(first, info));
+  sampleAssets();
+  demoReady = true;
+  showDemo(currentTheme(), { restart: true });
+  if (demoUserPaused) demo.showPoster();
+  updateDemoPlayback();
   const all = THEMES.flatMap((t) => t.variants.map((v) => resolveTheme(t.id, { variant: v.id })));
   await Promise.all(all.map((t) => ensureFonts(t, collectTexts(t, info))));
-  sampleAssets();
   site.setSamples((id) => sampleThumb(id));
-  demoReady = true;
-  showDemo(currentTheme());
+  demo.redraw();
   showHero(0);
   if (reducedMotion) heroDemo.showPoster();
   updateHeroPlayback();
   await picker.renderPosters();
   site.setPosters((id) => picker.posterUrl(id));
+  customizer.invalidatePosters();
 }
 
 const groupInput = $<HTMLInputElement>('f-group');
@@ -700,6 +962,8 @@ groupInput.addEventListener('change', () => {
   state.groupPhotos = groupInput.checked;
   persist();
   rebuild();
+  seekMine('scene');
+  toast(groupInput.checked ? '여러 장을 한 화면에 모아 보여줘요' : '한 화면에 사진을 한 장씩 보여줘요');
 });
 
 // ───────────────────────── 음악 ─────────────────────────
@@ -826,7 +1090,7 @@ function previewContext(): RenderContext | null {
   if (!timeline) return null;
   return {
     timeline,
-    theme: currentTheme(),
+    theme: previewTheme(),
     info: state.info,
     assets: previewCache,
     photoDate: (id) => photoDates.get(id) ?? null,
@@ -932,26 +1196,25 @@ const exportPanel = setupExportPanel({
 });
 
 // ───────────────────────── 휴대폰: 어디서든 미리보기 ─────────────────────────
-// 한 줄 화면에서는 미리보기가 맨 아래에 있으므로, 설정을 바꾸는 중에도 떠 있는 버튼으로 바로 볼 수 있게 함.
-// 누르면 미리보기 화면(캔버스·재생 막대)을 아래에서 올라오는 창으로 옮겨 보여주고, 닫으면 제자리로 돌려놓음.
+// 스타일·꾸미기·문구 카드를 지나는 동안은 위쪽에 붙은 미리보기가 보이고, 그 밖(사진·음악·길이)에서는
+// 떠 있는 버튼으로 내 영상 미리보기를 아래에서 올라오는 창으로 열어 봄.
 
-const narrow = window.matchMedia('(max-width: 1080px)');
 const fab = $<HTMLButtonElement>('preview-fab');
 const sheet = $<HTMLDialogElement>('preview-sheet');
 const previewBox = $('preview-box');
 const previewHome = $('preview-home');
 let stepsInView = false;
-let previewInView = false;
 let typing = false;
 
 function updateFab(): void {
-  fab.hidden = !(narrow.matches && stepsInView && !previewInView && !typing && !!timeline && !exporting && !sheet.open && !editor.isOpen);
+  fab.hidden = !(narrow.matches && stepsInView && !liveInView && !typing && !!timeline && !exporting && !sheet.open && !editor.isOpen);
 }
 
 function openPreviewSheet(): void {
   if (sheet.open || !timeline) return;
   $('ps-body').append(previewBox);
   sheet.showModal();
+  player.refresh();
   updateFab();
 }
 
@@ -961,25 +1224,31 @@ new IntersectionObserver((entries) => {
 }).observe(stepsEl);
 new IntersectionObserver(
   (entries) => {
-    previewInView = entries.some((e) => e.isIntersecting);
+    liveInView = entries.some((e) => e.isIntersecting);
     updateFab();
   },
   { threshold: 0.35 },
-).observe(previewHome);
-narrow.addEventListener('change', updateFab);
-// 자판이 올라와 있을 때는 버튼이 입력칸을 가리지 않도록 숨김
+).observe(liveBox);
+narrow.addEventListener('change', () => {
+  placeLive();
+  updateFab();
+});
+// 자판이 올라와 있을 때는 버튼이 입력칸을 가리지 않도록 숨기고, 휴대폰에서는 붙어 있던 미리보기도 제자리로
 document.addEventListener('focusin', (e) => {
   typing = (e.target as HTMLElement).matches?.('input[type="text"], input[type="date"], input[type="time"], textarea') ?? false;
+  document.body.classList.toggle('typing', typing);
   updateFab();
 });
 document.addEventListener('focusout', () => {
   typing = false;
+  document.body.classList.remove('typing');
   updateFab();
 });
 fab.addEventListener('click', openPreviewSheet);
 sheet.addEventListener('close', () => {
   previewHome.append(previewBox);
   player.pause();
+  player.refresh();
   updateFab();
 });
 sheet.addEventListener('click', (e) => {
@@ -1012,11 +1281,12 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 initPwa();
+placeLive();
 updateSortChips();
 customMusicEl.hidden = true;
 rebuild();
 refreshFonts();
-showDemo(currentTheme());
+showDemo(currentTheme(), { restart: true });
 void initStyleDemos().catch((e) => console.error(e));
 
 // 자동 테스트용 정보 (?e2e 주소로 열었을 때만)
@@ -1032,8 +1302,10 @@ if (new URLSearchParams(location.search).has('e2e')) {
       demo.pause();
     },
     demoSeek: (t: number) => demo.seek(t),
-    demoInfo: () => ({ duration: demo.duration, cues: demo.cues }),
+    demoInfo: () => ({ duration: demo.duration, cues: demo.cues, marks: demo.marks }),
+    demoTime: () => demo.currentTime,
     heroPlaying: () => heroDemo.isPlaying,
+    liveTab: () => liveTab,
     /** 사진마다 문구 넣기 (화면 캡처 점검용): fn(순서) → 문구 */
     setCaptions: (fn: (index: number) => string) => {
       state.photos.forEach((p, i) => {
@@ -1042,7 +1314,10 @@ if (new URLSearchParams(location.search).has('e2e')) {
       rebuild();
       refreshFonts();
     },
-    theme: () => ({ id: currentTheme().id, variant: currentTheme().variantId, title: currentTheme().titleDesign, particle: currentTheme().effects.particle }),
+    theme: () => {
+      const t = currentTheme();
+      return { id: t.id, variant: t.variantId, title: t.titleDesign, particle: t.effects.particle, fonts: t.fonts, custom: { ...state.custom } };
+    },
   };
 }
 setTimeout(() => {

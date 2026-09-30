@@ -27,7 +27,23 @@ export type TransitionType =
   /** 잉크가 번지듯 퍼지며 열림 */
   | 'ink'
   /** 블라인드처럼 세로 띠가 차례로 열림 */
-  | 'blinds';
+  | 'blinds'
+  /** 새 장면이 옆에서 미끄러져 들어와 덮음 */
+  | 'slide'
+  /** 가운데서 양쪽으로 문이 열리듯 */
+  | 'split'
+  /** 카메라 플래시처럼 하얗게 번쩍 */
+  | 'flash'
+  /** 모자이크(픽셀)로 흩어졌다 모임 */
+  | 'mosaic'
+  /** 반짝이가 흩뿌려지며 넘어감 */
+  | 'sparkle'
+  /** 필름이 타들어 가듯 따뜻한 빛이 번짐 */
+  | 'filmburn'
+  /** 살포시 떠오르며 나타남 */
+  | 'rise'
+  /** 시계 방향으로 닦아내기 */
+  | 'clock';
 
 export type MotionType = 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
 
@@ -133,6 +149,8 @@ export interface WeddingInfo {
   time: string;
   venue: string;
   introTitle: string;
+  /** 엔딩 제목 (비우면 스타일 기본 문구) */
+  outroTitle: string;
   outroMessage: string;
   outroNotice: string;
   /** 영상 중간에 넣을 감성 문구 (한 줄에 하나) */

@@ -25,10 +25,12 @@ self.addEventListener('activate', (event) => {
       for (const key of await caches.keys()) {
         if (key.startsWith('wvm-shell-') && key !== SHELL) await caches.delete(key);
       }
-      // 예전 빌드의 스크립트·스타일은 지움 (글꼴은 이름이 같으면 계속 씀)
+      // 예전 빌드의 스크립트·스타일은 지움 (글꼴과, 고를 때 불러오는 글꼴 CSS는 이름이 같으면 계속 씀)
       const files = await caches.open(FILES);
       for (const req of await files.keys()) {
-        if (/\.(js|css)$/.test(new URL(req.url).pathname) && !keep.has(req.url)) await files.delete(req);
+        const path = new URL(req.url).pathname;
+        if (/\/assets\/\d{3}(-italic)?-[^/]+\.css$/.test(path)) continue;
+        if (/\.(js|css)$/.test(path) && !keep.has(req.url)) await files.delete(req);
       }
       await self.clients.claim();
     })(),

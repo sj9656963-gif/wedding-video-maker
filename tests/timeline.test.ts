@@ -336,6 +336,20 @@ describe('buildTimeline', () => {
     for (let i = 1; i < dirs.length; i++) expect(dirs[i]).toBe(-dirs[i - 1]);
   });
 
+  it("'시계 방향' 전환은 늘 시계 방향 (방향이 번갈아 바뀌지 않음)", () => {
+    const tl = buildTimeline(
+      input(makePhotos(40, 'landscape'), 200, {
+        transitionTypes: [
+          { type: 'clock', weight: 1 },
+          { type: 'push', weight: 1 },
+        ],
+      }),
+    );
+    const clocks = tl.segments.filter((s) => s.kind === 'photo' && s.index > 0 && s.transitionIn!.type === 'clock');
+    expect(clocks.length).toBeGreaterThan(2);
+    for (const s of clocks) expect(s.transitionIn!.direction).toBe(1);
+  });
+
   it('특수 전환은 연달아 반복되지 않는다', () => {
     const tl = buildTimeline(themed('romantic', makePhotos(80), 300));
     const types = tl.segments.slice(2).map((s) => s.transitionIn!.type);

@@ -32,6 +32,7 @@ export function overlayInsets(theme: Theme): OverlayInsets {
   // 캠코더 카운터·날짜(아래쪽 976 부근)와 디카 날짜 스탬프(990 부근) 위로
   if (o.includes('camcorder') || o.includes('datestamp')) textBottom = Math.max(textBottom, 150);
   if (o.includes('gate')) textBottom = Math.max(textBottom, 40);
+  if (o.includes('lace')) textBottom = Math.max(textBottom, 50);
   // 캠코더 날짜·시각 두 줄의 윗부분(887 부근), 디카 날짜 스탬프 윗부분(930 부근)보다 위
   let hud = 0;
   if (o.includes('camcorder')) hud = 210;
@@ -213,11 +214,16 @@ function vhs(env: OverlayEnv, t: number): void {
 
 function marks(env: OverlayEnv, seg: Segment): void {
   if (seg.kind !== 'photo') return;
-  const { ctx, theme } = env;
+  const { ctx, theme, k } = env;
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillStyle = '#ffffff';
   ctx.lineWidth = 3;
+  // 라임색 배경·사진 가장자리 위에서도 읽히도록 진한 그림자 (캠코더 화면 글자처럼)
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 5 * k;
+  ctx.shadowOffsetX = 2 * k;
+  ctx.shadowOffsetY = 2 * k;
   const m = 46;
   const L = 34;
   ctx.beginPath();
@@ -236,8 +242,8 @@ function marks(env: OverlayEnv, seg: Segment): void {
   ctx.font = fontSpec(theme.fonts.display, 30, theme.fonts.displayWeight);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowBlur = 6 * env.k;
+  ctx.shadowColor = 'rgba(0,0,0,0.85)';
+  ctx.shadowBlur = 6 * k;
   ctx.fillText(`NO.${String(seg.index + 1).padStart(2, '0')}`, m + 34, m + 2);
   ctx.textAlign = 'right';
   const year = /^(\d{4})/.exec(env.info.date)?.[1] ?? '';
@@ -270,6 +276,198 @@ function gate(env: OverlayEnv, t: number): void {
   ctx.restore();
 }
 
+/** 얇은 두 줄 액자선과 모서리 마름모 */
+function lineFrame(env: OverlayEnv, t: number): void {
+  const { ctx, theme } = env;
+  const a = easeInOutSine(clamp01((t - 0.3) / 1.6));
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = 0.82 * a;
+  ctx.strokeStyle = theme.colors.accent;
+  ctx.fillStyle = theme.colors.accent;
+  ctx.lineWidth = 2.4;
+  ctx.strokeRect(34, 34, W - 68, H - 68);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(46, 46, W - 92, H - 92);
+  for (const [x, y] of [
+    [40, 40],
+    [W - 40, 40],
+    [40, H - 40],
+    [W - 40, H - 40],
+  ]) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 9);
+    ctx.lineTo(x + 9, y);
+    ctx.lineTo(x, y + 9);
+    ctx.lineTo(x - 9, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** 네 모서리의 금빛 곡선 장식 */
+function cornerFlourish(env: OverlayEnv, t: number): void {
+  const { ctx, theme, k } = env;
+  const a = easeInOutSine(clamp01((t - 0.3) / 1.6));
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = 0.9 * a;
+  ctx.strokeStyle = theme.colors.accent;
+  ctx.fillStyle = theme.colors.accent;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 6 * k;
+  const L = 170 * (0.6 + 0.4 * a);
+  for (const [x, y, sx, sy] of [
+    [44, 44, 1, 1],
+    [W - 44, 44, -1, 1],
+    [44, H - 44, 1, -1],
+    [W - 44, H - 44, -1, -1],
+  ]) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(sx, sy);
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(0, L);
+    ctx.lineTo(0, 24);
+    ctx.quadraticCurveTo(0, 0, 24, 0);
+    ctx.lineTo(L, 0);
+    ctx.stroke();
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(13, L * 0.7);
+    ctx.lineTo(13, 32);
+    ctx.quadraticCurveTo(13, 13, 32, 13);
+    ctx.lineTo(L * 0.7, 13);
+    ctx.stroke();
+    // 끝의 작은 소용돌이
+    for (const [ex, ey, rot] of [
+      [L, 0, 0],
+      [0, L, Math.PI / 2],
+    ] as const) {
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.rotate(rot);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(8, 8, 8, -Math.PI / 2, Math.PI * 1.1);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.moveTo(34, 24);
+    ctx.lineTo(44, 34);
+    ctx.lineTo(34, 44);
+    ctx.lineTo(24, 34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/** 위아래 가장자리의 레이스 */
+function lace(env: OverlayEnv, t: number): void {
+  const { ctx } = env;
+  const a = easeInOutSine(clamp01((t - 0.2) / 1.4));
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  const R = 22;
+  for (const flip of [false, true]) {
+    ctx.save();
+    if (flip) {
+      ctx.translate(0, H);
+      ctx.scale(1, -1);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.fillRect(0, 0, W, 10);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    for (let x = 0; x < W + R * 2; x += R * 2) {
+      ctx.moveTo(x + R * 2, 10);
+      ctx.arc(x + R, 10, R, 0, Math.PI);
+    }
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.6;
+    for (let x = 0; x < W + R * 2; x += R * 2) {
+      ctx.beginPath();
+      ctx.arc(x + R, 16, 6, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + R * 2, 36, 2.6, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function flower(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, rot: number): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = color;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * TAU;
+    ctx.beginPath();
+    ctx.ellipse(Math.cos(a) * r * 0.52, Math.sin(a) * r * 0.52, r * 0.52, r * 0.36, a, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,235,160,0.95)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.26, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 왼쪽 위·오른쪽 아래 모서리의 꽃 장식 */
+function flowerCorners(env: OverlayEnv, t: number): void {
+  const { ctx, theme, k } = env;
+  const a = easeInOutSine(clamp01((t - 0.2) / 1.6));
+  if (a <= 0) return;
+  const petal = theme.effects.particleColors?.[0] ?? '#ffd3dd';
+  const petal2 = theme.colors.accent;
+  const leaf = 'rgba(140,178,120,0.95)';
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 8 * k;
+  for (const [ox, oy, s] of [
+    [0, 0, 1],
+    [W, H, -1],
+  ] as const) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, s);
+    ctx.fillStyle = leaf;
+    for (const [lx, ly, rot, len] of [
+      [150, 24, 0.3, 46],
+      [30, 170, 1.2, 44],
+      [120, 110, 0.8, 36],
+      [210, 60, -0.2, 34],
+      [62, 232, 1.5, 32],
+    ] as const) {
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.rotate(rot + Math.sin(t * 0.6 + lx) * 0.05);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, len, len * 0.36, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+    flower(ctx, 70, 70, 44, petal, Math.sin(t * 0.5) * 0.08);
+    flower(ctx, 168, 44, 28, petal2, 0.4 + Math.sin(t * 0.55 + 1) * 0.08);
+    flower(ctx, 44, 168, 30, petal2, 0.8 + Math.sin(t * 0.45 + 2) * 0.08);
+    flower(ctx, 140, 140, 18, petal, 0.2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 /** seg = 지금 화면의 중심 구간 (전환 중이면 더 많이 보이는 쪽) */
 export function drawOverlays(env: OverlayEnv, t: number, seg: Segment): void {
   for (const o of env.theme.overlays) {
@@ -282,6 +480,18 @@ export function drawOverlays(env: OverlayEnv, t: number, seg: Segment): void {
         break;
       case 'marks':
         marks(env, seg);
+        break;
+      case 'frame':
+        lineFrame(env, t);
+        break;
+      case 'corners':
+        cornerFlourish(env, t);
+        break;
+      case 'lace':
+        lace(env, t);
+        break;
+      case 'flowers':
+        flowerCorners(env, t);
         break;
     }
   }

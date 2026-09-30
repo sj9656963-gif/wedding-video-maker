@@ -1,11 +1,25 @@
-// 오프닝/엔딩 문구 그리기: 클래식 디자인은 여기서, 나머지 디자인은 titles.ts에서
+// 오프닝/엔딩 문구 그리기: 클래식 디자인은 여기서, 나머지 디자인은 titles.ts·titles-extra.ts에서
 
 import { DESIGN_H as H, DESIGN_W as W, clamp01, easeOutCubic, smoothstep } from './design';
 import { fillSpaced } from './draw-utils';
 import { formatKoreanDate } from './format';
 import { wrapText } from './text-layout';
 import { fontSpec, type Theme } from './themes';
-import { DESIGN_TEXTS, HANGUL, drawDesignedIntro, drawDesignedOutro, drawDividerAt, drawNamesRow, fitFont, type TextEnv } from './titles';
+import {
+  DESIGN_TEXTS,
+  HANGUL,
+  drawDesignedIntro,
+  drawDesignedOutro,
+  drawDividerAt,
+  drawNamesRow,
+  fitFont,
+  nameFont,
+  softShadow,
+  titleOf,
+  withTextScale,
+  type TextEnv,
+} from './titles';
+import { EXTRA_TEXTS } from './titles-extra';
 import type { WeddingInfo } from './types';
 
 const CX = W / 2;
@@ -20,11 +34,7 @@ interface Item {
 }
 
 function shadow(env: TextEnv, blur = 18): void {
-  const { ctx, theme, k } = env;
-  ctx.shadowColor = theme.colors.textShadow;
-  ctx.shadowBlur = blur * k;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 2 * k;
+  softShadow(env, blur);
 }
 
 function drawTitle(env: TextEnv, text: string, cy: number, scriptSize: number): void {
@@ -33,7 +43,7 @@ function drawTitle(env: TextEnv, text: string, cy: number, scriptSize: number): 
   ctx.fillStyle = theme.colors.accent;
   ctx.textAlign = 'center';
   if (HANGUL.test(text)) {
-    fitFont(ctx, text, 1600, (s) => fontSpec(f.body, s, f.nameWeight), 68);
+    fitFont(ctx, text, 1600, nameFont(theme), 68);
     ctx.fillText(text, CX, cy);
   } else if (theme.titleStyle === 'script') {
     fitFont(ctx, text, 1600, (s) => fontSpec(f.title, s, f.titleWeight, f.titleItalic), scriptSize);
@@ -47,15 +57,14 @@ function drawTitle(env: TextEnv, text: string, cy: number, scriptSize: number): 
 
 function drawNames(env: TextEnv, info: WeddingInfo, cy: number, size: number): void {
   const { theme } = env;
-  const f = theme.fonts;
-  drawNamesRow(env, info, CX, cy, size, (s) => fontSpec(f.body, s, f.nameWeight), theme.colors.text, theme.colors.accent, 'center', 1700);
+  drawNamesRow(env, info, CX, cy, size, nameFont(theme), theme.colors.text, theme.colors.accent, 'center', 1700);
 }
 
-function drawLine(env: TextEnv, text: string, cy: number, size: number, color: string, weight?: number): void {
+function drawLine(env: TextEnv, text: string, cy: number, size: number, color: string): void {
   const { ctx, theme } = env;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
-  fitFont(ctx, text, 1700, (s) => fontSpec(theme.fonts.body, s, weight ?? theme.fonts.bodyWeight), size);
+  fitFont(ctx, text, 1700, (s) => fontSpec(theme.fonts.body, s, theme.fonts.bodyWeight), size);
   ctx.fillText(text, CX, cy);
 }
 
@@ -92,7 +101,7 @@ export function drawIntroText(env: TextEnv, info: WeddingInfo, u: number, dur: n
   const fadeOut = 1 - smoothstep(dur - 2.9 * f, dur - 1.7 * f, u);
   if (fadeOut <= 0) return;
   const { theme } = env;
-  const title = info.introTitle.trim() || theme.introScript;
+  const title = titleOf(env, info, false);
   const scriptTitle = theme.titleStyle === 'script' && !HANGUL.test(title);
   const dateText = formatKoreanDate(info.date, info.time);
   const venue = info.venue.trim();
@@ -105,7 +114,7 @@ export function drawIntroText(env: TextEnv, info: WeddingInfo, u: number, dur: n
   }
   if (dateText) items.push({ h: 52, at: 2.3 * f, draw: (cy) => drawLine(env, dateText, cy, 38, theme.colors.sub) });
   if (venue) items.push({ h: 48, at: 2.7 * f, draw: (cy) => drawLine(env, venue, cy, 36, theme.colors.sub) });
-  layoutItems(env, items, u, 20, fadeOut, 1.3 * Math.max(0.5, f));
+  withTextScale(env, () => layoutItems(env, items, u, 20, fadeOut, 1.3 * Math.max(0.5, f)));
 }
 
 /** 엔딩 문구 */
@@ -116,9 +125,9 @@ export function drawOutroText(env: TextEnv, info: WeddingInfo, u: number, pace =
   }
   const { ctx, theme } = env;
   const f = Math.min(1, pace);
-  const items: Item[] = [
-    { h: theme.titleStyle === 'script' ? 150 : 84, at: 1.4 * f, draw: (cy) => drawTitle(env, theme.outroScript, cy, 150) },
-  ];
+  const title = titleOf(env, info, true);
+  const scriptTitle = theme.titleStyle === 'script' && !HANGUL.test(title);
+  const items: Item[] = [{ h: scriptTitle ? 150 : 84, at: 1.4 * f, draw: (cy) => drawTitle(env, title, cy, 150) }];
   const message = info.outroMessage.trim();
   if (message) {
     ctx.font = fontSpec(theme.fonts.body, 46, theme.fonts.bodyWeight);
@@ -139,16 +148,18 @@ export function drawOutroText(env: TextEnv, info: WeddingInfo, u: number, pace =
       draw: (cy) => drawLine(env, notice, cy, 36, theme.colors.accent),
     });
   }
-  layoutItems(env, items, u, 16, 1, 1.3 * Math.max(0.5, f));
+  withTextScale(env, () => layoutItems(env, items, u, 16, 1, 1.3 * Math.max(0.5, f)));
 }
 
 /** 캔버스에 그릴 모든 문구 (글꼴 미리 불러오기용). extra = 사진 문구 등 */
 export function collectTexts(theme: Theme, info: WeddingInfo, extra: readonly string[] = []): string[] {
+  const intro = info.introTitle || theme.introScript;
+  const outro = (info.outroTitle ?? '').trim() || theme.outroScript;
   return [
-    info.introTitle || theme.introScript,
-    theme.outroScript,
-    theme.outroScript.toUpperCase(),
-    (info.introTitle || theme.introScript).toUpperCase(),
+    intro,
+    outro,
+    outro.toUpperCase(),
+    intro.toUpperCase(),
     info.groom,
     info.bride,
     formatKoreanDate(info.date, info.time),
@@ -162,6 +173,7 @@ export function collectTexts(theme: Theme, info: WeddingInfo, extra: readonly st
     'Our story O U R S T O R Y 0123456789. ▸A No.-…',
     '&',
     ...DESIGN_TEXTS,
+    ...EXTRA_TEXTS,
     ...extra,
   ];
 }

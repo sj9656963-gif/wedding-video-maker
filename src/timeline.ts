@@ -539,7 +539,8 @@ export function buildTimeline(input: TimelineInput): Timeline {
     } else {
       const type = pickTransition(input.transitionTypes, prevTransition, rnd);
       let direction: 1 | -1 = 1;
-      if (type === 'push' || type === 'wipe' || type === 'veil') {
+      // 밀기·닦기처럼 방향이 있는 전환은 번갈아 (시계 방향 전환은 이름대로 늘 한 방향)
+      if (type === 'push' || type === 'wipe' || type === 'veil' || type === 'slide') {
         direction = pushDir;
         pushDir = pushDir === 1 ? -1 : 1;
       }

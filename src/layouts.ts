@@ -572,9 +572,23 @@ export function drawFilmstripScene(env: SceneEnv, seg: PhotoSegment, st: SceneTi
     centers.push(acc + w / 2);
     acc += w + (j < widths.length - 1 ? gap : 0);
   });
-  // 오른쪽에서 왼쪽으로 일정한 속도로 흐름: 첫 칸 중심이 화면 68% → 마지막 칸 중심이 32%
+  // 오른쪽에서 왼쪽으로 일정한 속도로 흐름. 장면 내내 사진 칸이 화면을 채우도록
+  // 첫 칸 왼쪽 끝이 화면 6%에서 시작해 마지막 칸 오른쪽 끝이 94%에 닿을 때 끝남 (칸이 적으면 가운데서 천천히)
   const q = clamp01(st.u / st.dur);
-  const off = W * 0.68 - centers[0] + (W * 0.32 - centers[centers.length - 1] - (W * 0.68 - centers[0])) * q;
+  const total = acc;
+  const span = W * 0.88;
+  let off0: number;
+  let off1: number;
+  if (total > span + W * 0.08) {
+    off0 = W * 0.06;
+    off1 = W * 0.94 - total;
+  } else {
+    const c = (W - total) / 2;
+    const drift = Math.max(W * 0.04, (total - span) / 2);
+    off0 = c + drift;
+    off1 = c - drift;
+  }
+  const off = off0 + (off1 - off0) * q;
   const y0 = H / 2 - bandH / 2;
   ctx.save();
   ctx.translate(W / 2, H / 2);

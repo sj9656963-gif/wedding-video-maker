@@ -16,7 +16,10 @@ fs.mkdirSync(outDir, { recursive: true });
 const out = (n) => path.join(outDir, n);
 const only = process.env.V_ONLY ?? '';
 const withCaptions = !!process.env.V_CAPTIONS;
-const THEME_LIST = (process.env.V_THEMES ?? 'romantic,classic,cinema,garden,street,neon,camcorder,film,modern,gallery').split(',');
+const THEME_LIST = (
+  process.env.V_THEMES ??
+  'classic,romantic,lovely,cinema,garden,fairytale,royal,traditional,editorial,street,neon,summer,retro,camcorder,film,modern,gallery'
+).split(',');
 /** 길이가 다른 문구 (짧음 · 보통 · 넘쳐서 줄여야 하는 긴 문구) */
 const CAPTIONS = ['제주에서', '2019 봄, 한강 산책', '우리가 함께 걸었던 가장 길고 따뜻했던 여름밤 바닷가'];
 
@@ -113,6 +116,50 @@ try {
         }
       }
     }
+  }
+
+  // ── 꾸미기: 새 효과·테두리·필터·전환·장식·글씨체를 예시 영상으로 ──
+  if (!only || only === 'custom') {
+    await page.evaluate(() => window.__wvm.demoPause());
+    await page.click('label.theme-card:has(input[value="classic"])');
+    await page.waitForTimeout(500);
+    const pick = (key, value) => page.evaluate(([k, v]) => document.querySelector(`button[data-key="${k}"][data-value="${v}"]`)?.click(), [key, value]);
+    const at = async (name, t) => {
+      await page.evaluate((t) => {
+        window.__wvm.demoPause();
+        window.__wvm.demoSeek(t);
+      }, t);
+      await saveCanvas(page, '#style-demo', name);
+    };
+    const groups = [
+      ['particle', ['roses', 'maple', 'stars', 'glitter', 'bubbles', 'butterflies', 'feathers', 'balloons', 'fireflies', 'notes'], 'scene'],
+      ['frame', ['frame', 'corners', 'lace', 'flowers'], 'scene'],
+      ['filter', ['warm', 'cool', 'film', 'mono', 'sepia', 'fade', 'pastel', 'vivid', 'pink', 'golden', 'teal', 'lavender', 'mint'], 'scene'],
+      ['ornament', ['flower', 'bow', 'rings', 'crown', 'none'], 'intro'],
+      ['nameJoin', ['and', 'rings', 'infinity', 'dot'], 'intro'],
+      ['fontTitle', ['Dancing Script', 'Allura', 'Playfair Display Italic', 'Bodoni Moda', 'Monoton', 'Amatic SC'], 'intro'],
+      ['fontName', ['Jua', 'Noto Serif KR', 'Nanum Brush Script', 'Dongle', 'Do Hyeon', 'Gaegu'], 'intro'],
+      ['textSize', ['sm', 'lg'], 'intro'],
+      ['textEffect', ['strong', 'glow', 'none'], 'intro'],
+    ];
+    for (const [key, values, where] of groups) {
+      for (const v of values) {
+        await pick(key, v);
+        await page.waitForTimeout(key.startsWith('font') ? 1800 : 350);
+        const marks = (await page.evaluate(() => window.__wvm.demoInfo())).marks;
+        await at(`custom-${key}-${v.replace(/\s+/g, '_')}.png`, marks[where]);
+      }
+      await pick(key, 'auto');
+    }
+    // 전환: 두 번째 장면으로 넘어가는 동안 세 순간
+    for (const v of ['slide', 'split', 'flash', 'mosaic', 'sparkle', 'filmburn', 'rise', 'clock']) {
+      await pick('transition', v);
+      await page.waitForTimeout(350);
+      const info = await page.evaluate(() => window.__wvm.demoInfo());
+      const start = info.cues[2].start - 0.3;
+      for (const q of [0.25, 0.5, 0.75]) await at(`custom-transition-${v}-${Math.round(q * 100)}.png`, start + q);
+    }
+    await pick('transition', 'auto');
   }
 
   // ── 실제 사진으로 모든 배치·전환 ──
@@ -253,8 +300,8 @@ try {
     await m.locator('#pe-close').tap();
     await m.waitForTimeout(500);
     await m.screenshot({ path: out('mobile-studio-grid-cap.png') });
-    // 떠 있는 미리보기 버튼 → 미리보기 창
-    await m.locator('#h-text').scrollIntoViewIfNeeded();
+    // 떠 있는 미리보기 버튼 → 미리보기 창 (위에 붙은 미리보기가 밀려 올라간 음악 카드 쪽에서. 미리보기가 보이는 동안은 버튼을 숨김)
+    await m.evaluate(() => document.querySelector('#h-music')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
     await m.waitForTimeout(700);
     console.log('mobile fab visible:', await m.locator('#preview-fab').isVisible());
     await m.screenshot({ path: out('mobile-fab.png') });

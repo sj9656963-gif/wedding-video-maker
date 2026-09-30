@@ -1,8 +1,10 @@
 // 사진 편집 창: 사진마다 문구 넣기(Enter로 다음 사진), 순서 이동, 오프닝·엔딩 지정, 빼기, 미리보기에서 보기.
 // 넓은 화면에서는 가운데 창, 휴대폰에서는 아래에서 올라오는 시트(CSS).
 
+import { SUGGESTIONS } from '../suggestions';
 import type { PhotoItem } from '../types';
 import { $ } from './dom';
+import { attachSuggestions, type Suggest } from './suggest';
 
 export interface PhotoEditorDeps {
   photos(): readonly PhotoItem[];
@@ -34,9 +36,17 @@ export class PhotoEditor {
   private readonly prevBtn = $<HTMLButtonElement>('pe-prev');
   private readonly nextBtn = $<HTMLButtonElement>('pe-next');
   private readonly act = new Map<string, HTMLButtonElement>();
+  private readonly suggest: Suggest;
   private id: string | null = null;
 
   constructor(private readonly deps: PhotoEditorDeps) {
+    this.suggest = attachSuggestions($('pe-suggest'), {
+      field: this.caption,
+      items: SUGGESTIONS.caption,
+      mode: 'replace',
+      perPage: 6,
+      label: '사진 문구 예시',
+    });
     for (const b of this.dialog.querySelectorAll<HTMLButtonElement>('button[data-pe]')) this.act.set(b.dataset.pe ?? '', b);
     $('pe-close').addEventListener('click', () => this.close());
     // 창 바깥(어두운 배경)을 누르면 닫힘
@@ -50,6 +60,7 @@ export class PhotoEditor {
     });
     this.caption.addEventListener('input', () => {
       if (this.id) deps.onCaption(this.id, this.caption.value);
+      this.suggest.refresh();
     });
     this.caption.addEventListener('keydown', (e) => {
       // 한글 조합 중 Enter는 글자 확정용이므로 넘어가지 않음
@@ -119,6 +130,7 @@ export class PhotoEditor {
     this.id = id;
     this.img.src = p.thumbUrl;
     this.caption.value = p.caption;
+    this.suggest.refresh();
     this.render();
   }
 

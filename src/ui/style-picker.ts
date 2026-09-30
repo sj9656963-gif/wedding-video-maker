@@ -1,27 +1,15 @@
-// 스튜디오의 스타일 고르기: 분위기 필터, 스타일 카드 10종, 양식(미니 포스터), 오프닝 디자인·흩날리는 효과
+// 스튜디오의 스타일 고르기: 분위기 필터, 스타일 카드 17종, 양식(미니 포스터).
+// 오프닝 디자인·글씨체·효과 등 세부 꾸미기는 customizer.ts에서.
 
-import {
-  MOODS,
-  PARTICLES,
-  THEMES,
-  TITLE_DESIGNS,
-  baseTheme,
-  resolveTheme,
-  type MoodId,
-  type ParticleKind,
-  type Theme,
-  type TitleDesign,
-} from '../themes';
+import { MOODS, THEMES, baseTheme, resolveTheme, type MoodId, type Theme } from '../themes';
 import { $, h } from './dom';
 
 export interface StyleSelection {
   themeId: string;
   variantId: string | null;
-  title: TitleDesign | 'auto';
-  particle: ParticleKind | 'auto';
 }
 
-export type StyleChange = 'theme' | 'variant' | 'title' | 'particle';
+export type StyleChange = 'theme' | 'variant';
 
 export interface StylePickerOptions {
   initial: StyleSelection;
@@ -30,8 +18,6 @@ export interface StylePickerOptions {
   poster: (theme: Theme, width: number, height: number) => string;
 }
 
-const nameOfTitle = (id: TitleDesign) => TITLE_DESIGNS.find((d) => d.id === id)?.name ?? id;
-const nameOfParticle = (id: ParticleKind) => PARTICLES.find((p) => p.id === id)?.name ?? id;
 const idle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 export class StylePicker {
@@ -46,8 +32,6 @@ export class StylePicker {
   private readonly listEl = $('theme-list');
   private readonly variantEl = $('variant-list');
   private readonly variantHelp = $('variant-help');
-  private readonly titleEl = $('title-options');
-  private readonly particleEl = $('particle-options');
   private variantJob = 0;
 
   constructor(private readonly opts: StylePickerOptions) {
@@ -57,11 +41,6 @@ export class StylePicker {
     this.renderMoods();
     this.renderCards();
     this.renderVariants();
-    this.renderOptions();
-  }
-
-  get theme(): Theme {
-    return resolveTheme(this.sel.themeId, { variant: this.sel.variantId, title: this.sel.title, particle: this.sel.particle });
   }
 
   /** 스타일 카드 그림 (쇼케이스 등에서 재사용) */
@@ -123,7 +102,7 @@ export class StylePicker {
       });
       const poster = h('span', { class: 'poster', attrs: { 'aria-hidden': 'true' } });
       poster.style.backgroundImage = `linear-gradient(135deg, ${t.swatch[0]}, ${t.swatch[1]})`;
-      if (t.badge) poster.append(h('span', { class: 'badge', text: t.badge }));
+      if (t.badge) poster.append(h('span', { class: `badge${t.badge === '가장 인기' ? ' hot' : ''}`, text: t.badge }));
       this.posters.set(t.id, poster);
       const moods = t.moods.map((m) => MOODS.find((x) => x.id === m)?.name ?? m).join(' · ');
       const tags = h('span', { class: 'tags' }, t.highlights.map((x) => h('span', { text: x })));
@@ -145,7 +124,6 @@ export class StylePicker {
     this.sel.themeId = id;
     this.sel.variantId = null;
     this.renderVariants();
-    this.renderOptions();
     this.opts.onChange({ ...this.sel }, 'theme');
   }
 
@@ -160,7 +138,6 @@ export class StylePicker {
         input.addEventListener('change', () => {
           if (!input.checked) return;
           this.sel.variantId = v.id;
-          this.renderOptions();
           this.opts.onChange({ ...this.sel }, 'variant');
         });
         const pic = h('span', { class: 'vposter', attrs: { 'aria-hidden': 'true', 'data-variant': v.id } });
@@ -189,33 +166,5 @@ export class StylePicker {
       const pic = this.variantEl.querySelector<HTMLElement>(`[data-variant="${v.id}"]`);
       if (pic) pic.style.backgroundImage = `url("${url}")`;
     }
-  }
-
-  private renderOptions(): void {
-    const plain = resolveTheme(this.sel.themeId, { variant: this.sel.variantId });
-    const chip = (value: string, label: string, checked: boolean, pick: () => void) =>
-      h('button', { class: 'chip', attrs: { type: 'button', role: 'radio', 'aria-checked': String(checked), 'data-value': value }, on: { click: pick } }, [label]);
-    this.titleEl.replaceChildren(
-      chip('auto', `추천 (${nameOfTitle(plain.titleDesign)})`, this.sel.title === 'auto', () => this.pickTitle('auto')),
-      ...TITLE_DESIGNS.map((d) => chip(d.id, d.name, this.sel.title === d.id, () => this.pickTitle(d.id))),
-    );
-    const autoParticle = plain.effects.particles > 0 ? nameOfParticle(plain.effects.particle) : '없음';
-    this.particleEl.replaceChildren(
-      chip('auto', `추천 (${autoParticle})`, this.sel.particle === 'auto', () => this.pickParticle('auto')),
-      ...PARTICLES.map((p) => chip(p.id, p.name, this.sel.particle === p.id, () => this.pickParticle(p.id))),
-    );
-    for (const b of this.titleEl.querySelectorAll('button')) b.title = TITLE_DESIGNS.find((d) => d.id === b.dataset.value)?.desc ?? '';
-  }
-
-  private pickTitle(v: TitleDesign | 'auto'): void {
-    this.sel.title = v;
-    for (const b of this.titleEl.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.value === v));
-    this.opts.onChange({ ...this.sel }, 'title');
-  }
-
-  private pickParticle(v: ParticleKind | 'auto'): void {
-    this.sel.particle = v;
-    for (const b of this.particleEl.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.value === v));
-    this.opts.onChange({ ...this.sel }, 'particle');
   }
 }

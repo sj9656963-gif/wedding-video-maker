@@ -94,7 +94,7 @@ try {
   }));
   check(
     '인터넷 없이 다시 열기 (화면·스타일 카드·예시 영상)',
-    !off.online && off.creator === '제작자 : 부산북구 주양현' && off.cards === 10 && off.demo,
+    !off.online && off.creator === '제작자 : 부산북구 주양현' && off.cards === 17 && off.demo,
     JSON.stringify(off),
   );
   // 서비스 워커가 직접 받는 요청도 막혔는지 (그래야 저장본만으로 열렸다는 뜻). 저장본에 없는 파일을 요청해 봄

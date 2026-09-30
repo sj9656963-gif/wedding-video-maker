@@ -10,8 +10,10 @@ export function serviceWorker() {
     name: 'wvm-service-worker',
     apply: 'build',
     generateBundle(_options, bundle) {
+      // 꾸미기에서 고를 때만 불러오는 글꼴 CSS(assets/400-xxxx.css 등)는 미리 받지 않음. 쓸 때 저장됨 (sw.template.js)
+      const lazyFontCss = /^assets\/\d{3}(-italic)?-[^/]+\.css$/;
       const files = Object.keys(bundle)
-        .filter((f) => /\.(js|css)$/.test(f))
+        .filter((f) => /\.(js|css)$/.test(f) && !lazyFontCss.test(f))
         .sort();
       const precache = [
         ...files.map((f) => `./${f}`),

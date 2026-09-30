@@ -16,7 +16,7 @@ const HANGUL = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
 /** 굵은 강조 글꼴로 쓸 문구의 글꼴: 한글이 섞이면 한글 본문 글꼴의 이름 굵기로 (영문 전용 글꼴에는 한글이 없음) */
 function displayFont(theme: Theme, text: string, size: number): string {
   const f = theme.fonts;
-  return HANGUL.test(text) ? fontSpec(f.body, size, f.nameWeight) : fontSpec(f.display, size, f.displayWeight);
+  return HANGUL.test(text) ? fontSpec(f.body, size, f.bodyBold) : fontSpec(f.display, size, f.displayWeight);
 }
 
 /** 살짝 튕기며 멈추는 움직임 */
@@ -379,7 +379,7 @@ export function drawGalleryScene(env: SceneEnv, seg: PhotoSegment, st: SceneTime
       const noW = ctx.measureText(no).width;
       // 사진 문구는 TV 화면에서도 읽히도록 충분히 크게 (옆 액자 라벨과 겹치지 않는 폭 안에서)
       const maxW = Math.min(600, Math.max(300, w + 60)) - 40;
-      const fit = title ? fitLine(ctx, title, maxW, (s) => fontSpec(theme.fonts.body, s, theme.fonts.nameWeight), 30, 0.7) : null;
+      const fit = title ? fitLine(ctx, title, maxW, (s) => fontSpec(theme.fonts.body, s, theme.fonts.bodyBold), 30, 0.7) : null;
       const lw = Math.max(190, noW + 40, (fit?.width ?? 0) + 40);
       const lh = fit ? 100 : 52;
       const lx = cx + w / 2 - lw * Math.min(1, scale + 0.2);
@@ -397,7 +397,7 @@ export function drawGalleryScene(env: SceneEnv, seg: PhotoSegment, st: SceneTime
       ctx.font = fontSpec(theme.fonts.latin, 24, 500, true);
       ctx.fillText(no, lx + 20, ly + 27);
       if (fit) {
-        ctx.font = fontSpec(theme.fonts.body, fit.size, theme.fonts.nameWeight);
+        ctx.font = fontSpec(theme.fonts.body, fit.size, theme.fonts.bodyBold);
         ctx.globalAlpha *= 0.86;
         ctx.fillText(fit.text, lx + 20, ly + 68);
       }

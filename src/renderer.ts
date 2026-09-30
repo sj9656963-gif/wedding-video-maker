@@ -8,6 +8,7 @@ import {
   createCanvas,
   easeInOutCubic,
   easeInOutSine,
+  easeOutCubic,
   get2d,
   lerp,
   smoothstep,
@@ -51,6 +52,7 @@ export class Renderer {
   private readonly layers: Layer[] = [];
   /** 베일 전환용 저해상도 가림막·빛 (필요할 때 만듦) */
   private veil: { mask: Layer; light: Layer; maskData: ImageData; lightData: ImageData } | null = null;
+  private scratchLayer: Layer | null = null;
   private readonly supportsFilter: boolean;
 
   constructor(
@@ -80,9 +82,12 @@ export class Renderer {
     this.effects.vignette(theme);
     // 꽃잎·빛망울은 문구 아래에 그려 글자가 가려지지 않도록
     this.effects.particles(theme, t);
-    if (act.length === 2 && act[1].transitionIn?.type === 'petals') {
+    if (act.length === 2 && act[1].transitionIn) {
       const tr = act[1].transitionIn;
-      this.effects.petalBurst(clamp01((t - act[1].start) / tr.duration), tr.direction, act[1].kind === 'photo' ? act[1].index : 0, theme);
+      const p = clamp01((t - act[1].start) / tr.duration);
+      const seed = act[1].kind === 'photo' ? act[1].index : 0;
+      if (tr.type === 'petals') this.effects.petalBurst(p, tr.direction, seed, theme);
+      else if (tr.type === 'sparkle') this.effects.sparkleBurst(p, seed, theme.look.light);
     }
 
     const textEnv = { ctx, k, theme };
@@ -101,6 +106,7 @@ export class Renderer {
 
     this.effects.filmGrain(theme, t);
     this.effects.filmFlicker(theme, t);
+    this.effects.lightLeak(theme, t);
 
     if (!this.fades) return;
     const black = Math.max(
@@ -480,7 +486,180 @@ export class Renderer {
         ctx.restore();
         break;
       }
+      case 'slide': {
+        // 새 장면이 옆에서 미끄러져 들어와 덮고, 이전 장면은 조금 밀리며 어두워짐
+        const e = easeInOutCubic(p);
+        const d = tr.direction;
+        this.drawShifted(env, prev, t, -d * W * 0.28 * e);
+        ctx.fillStyle = `rgba(0,0,0,${(0.4 * e).toFixed(4)})`;
+        ctx.fillRect(0, 0, W, H);
+        const x = d * W * (1 - e);
+        const lead = d === 1 ? x : x + W;
+        const sw = 90;
+        const g = ctx.createLinearGradient(lead, 0, lead - d * sw, 0);
+        g.addColorStop(0, `rgba(0,0,0,${(0.38 * Math.sin(Math.PI * p)).toFixed(4)})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(Math.min(lead, lead - d * sw), 0, sw, H);
+        this.drawShifted(env, cur, t, x);
+        break;
+      }
+      case 'split': {
+        // 가운데서 양쪽으로 문이 열리며 뒤에 있던 새 장면이 드러남
+        const e = easeInOutCubic(p);
+        const s = 1.06 - 0.06 * e;
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.scale(s, s);
+        ctx.translate(-W / 2, -H / 2);
+        drawSegmentVisual(env, cur, t);
+        ctx.restore();
+        const a = this.renderToLayer(0, env, prev, t);
+        const cw = a.canvas.width;
+        const ch = a.canvas.height;
+        const off = (W / 2) * e;
+        ctx.drawImage(a.canvas, 0, 0, cw / 2, ch, -off, 0, W / 2, H);
+        ctx.drawImage(a.canvas, cw / 2, 0, cw / 2, ch, W / 2 + off, 0, W / 2, H);
+        const shade = 0.45 * Math.sin(Math.PI * p);
+        for (const side of [-1, 1] as const) {
+          const edge = W / 2 + side * off;
+          const g = ctx.createLinearGradient(edge, 0, edge + side * 60, 0);
+          g.addColorStop(0, `rgba(0,0,0,${shade.toFixed(4)})`);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(side === 1 ? edge : edge - 60, 0, 60, H);
+        }
+        break;
+      }
+      case 'flash': {
+        // 카메라 플래시처럼 순간 하얗게 번쩍인 뒤 새 장면이 살짝 당겨지며 자리 잡음
+        const peak = 0.4;
+        let a: number;
+        if (p < peak) {
+          drawSegmentVisual(env, prev, t);
+          a = Math.pow(p / peak, 2);
+        } else {
+          const q = (p - peak) / (1 - peak);
+          const s = 1 + 0.05 * (1 - easeOutCubic(q));
+          ctx.save();
+          ctx.translate(W / 2, H / 2);
+          ctx.scale(s, s);
+          ctx.translate(-W / 2, -H / 2);
+          drawSegmentVisual(env, cur, t);
+          ctx.restore();
+          a = Math.pow(1 - q, 1.6);
+        }
+        ctx.fillStyle = `rgba(255,255,255,${a.toFixed(4)})`;
+        ctx.fillRect(0, 0, W, H);
+        break;
+      }
+      case 'mosaic': {
+        // 화면이 큰 픽셀로 흩어졌다가 새 장면으로 다시 선명해짐
+        const src = p < 0.5 ? prev : cur;
+        const q = p < 0.5 ? p / 0.5 : (1 - p) / 0.5;
+        const block = 2 + 58 * easeInOutCubic(q);
+        if (block <= 3) {
+          drawSegmentVisual(env, src, t);
+          break;
+        }
+        const l = this.renderToLayer(0, env, src, t);
+        const sw = Math.max(1, Math.round(W / block));
+        const sh = Math.max(1, Math.round(H / block));
+        const m = this.scratch(sw, sh);
+        m.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        m.ctx.drawImage(l.canvas, 0, 0, sw, sh);
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(m.canvas, 0, 0, sw, sh, 0, 0, W, H);
+        ctx.restore();
+        break;
+      }
+      case 'sparkle':
+        // 디졸브 + 반짝이 (반짝이는 효과 단계에서 그림)
+        drawSegmentVisual(env, prev, t);
+        this.composite(env, cur, t, easeInOutSine(p));
+        break;
+      case 'filmburn': {
+        // 필름이 타들어 가듯 한쪽 가장자리에서 뜨거운 빛이 번졌다가 새 장면이 드러남
+        drawSegmentVisual(env, prev, t);
+        this.composite(env, cur, t, smoothstep(0.35, 0.72, p));
+        const burn = Math.sin(Math.PI * p);
+        if (burn > 0.001) {
+          const seed = cur.kind === 'photo' ? cur.index : 5;
+          const cx = hash01(seed * 3 + 1) < 0.5 ? W * 0.08 : W * 0.92;
+          const cy = H * (0.2 + 0.6 * hash01(seed * 3 + 2));
+          const R = lerp(260, W * 1.25, easeInOutSine(p));
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+          g.addColorStop(0, `rgba(255,250,235,${burn.toFixed(4)})`);
+          g.addColorStop(0.3, `rgba(255,176,70,${(0.85 * burn).toFixed(4)})`);
+          g.addColorStop(0.65, `rgba(210,70,20,${(0.5 * burn).toFixed(4)})`);
+          g.addColorStop(1, 'rgba(120,20,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = `rgba(255,140,60,${(0.22 * burn).toFixed(4)})`;
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
+        break;
+      }
+      case 'rise': {
+        // 새 장면이 살짝 확대된 채 아래에서 떠오르며 또렷해짐 (화면 끝이 비지 않을 만큼만)
+        drawSegmentVisual(env, prev, t);
+        const e = easeOutCubic(p);
+        const l = this.renderToLayer(0, env, cur, t);
+        const s = 1.08 - 0.08 * e;
+        const lift = 40 * (1 - e);
+        ctx.save();
+        ctx.globalAlpha = smoothstep(0, 0.75, p);
+        ctx.drawImage(l.canvas, (W - W * s) / 2, (H - H * s) / 2 + lift, W * s, H * s);
+        ctx.restore();
+        break;
+      }
+      case 'clock': {
+        // 시계 바늘처럼 (이름대로 항상 시계 방향으로) 한 바퀴 돌며 새 장면을 드러냄
+        drawSegmentVisual(env, prev, t);
+        const e = easeInOutSine(p);
+        const a0 = -Math.PI / 2;
+        const a1 = a0 + e * Math.PI * 2;
+        const R = Math.hypot(W, H);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(W / 2, H / 2);
+        ctx.arc(W / 2, H / 2, R, a0, a1, false);
+        ctx.closePath();
+        ctx.clip();
+        drawSegmentVisual(env, cur, t);
+        ctx.restore();
+        const glow = Math.sin(Math.PI * p);
+        if (glow > 0.01) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          ctx.strokeStyle = `rgba(${env.theme.look.light},${(0.8 * glow).toFixed(4)})`;
+          ctx.lineWidth = 4;
+          ctx.shadowColor = `rgba(${env.theme.look.light},0.9)`;
+          ctx.shadowBlur = 24 * k;
+          ctx.beginPath();
+          ctx.moveTo(W / 2, H / 2);
+          ctx.lineTo(W / 2 + Math.cos(a1) * R, H / 2 + Math.sin(a1) * R);
+          ctx.stroke();
+          ctx.restore();
+        }
+        break;
+      }
     }
+  }
+
+  /** 모자이크 전환용 작은 캔버스 */
+  private scratch(w: number, h: number): Layer {
+    let s = this.scratchLayer;
+    if (!s || s.canvas.width !== w || s.canvas.height !== h) {
+      const canvas = createCanvas(w, h);
+      s = { canvas, ctx: get2d(canvas) };
+      this.scratchLayer = s;
+    }
+    return s;
   }
 
   /** 가로로 길게 번지는 렌즈 플레어 (시네마·네온) */

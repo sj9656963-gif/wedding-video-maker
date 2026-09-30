@@ -1,4 +1,4 @@
-// 스타일 쇼케이스: 카드 10장이 3D 고리 모양으로 천천히 돌아감. 끌어서 돌리고, 누르면 그 스타일로 스튜디오 이동.
+// 스타일 쇼케이스: 스타일 카드가 3D 고리 모양으로 천천히 돌아감. 끌어서 돌리고, 누르면 그 스타일로 스튜디오 이동.
 
 import { MOODS, THEMES } from '../themes';
 
@@ -14,6 +14,7 @@ export function initRing(onPick: (id: string) => void): Ring {
   if (!scene || !ring) return { setPosters: () => undefined };
   const n = THEMES.length;
   const step = 360 / n;
+  ring.style.setProperty('--step', `${step}deg`);
   const cards = THEMES.map((t, i) => {
     const moods = t.moods.map((m) => MOODS.find((x) => x.id === m)?.name ?? m).join(' · ');
     const card = document.createElement('div');

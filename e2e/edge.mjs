@@ -87,7 +87,7 @@ try {
     { timeout: 30000 },
   );
   const posters = await page.$$eval('#theme-list .poster', (els) => els.map((e) => e.style.backgroundImage.slice(0, 26)));
-  check('스타일 카드 10개에 예시 그림', posters.length === 10 && posters.every((p) => p.startsWith('url("data:image/jpeg')), `${posters.length}개`);
+  check('스타일 카드 17개에 예시 그림', posters.length === 17 && posters.every((p) => p.startsWith('url("data:image/jpeg')), `${posters.length}개`);
   const bodyText = (await page.textContent('body')) ?? '';
   check('뺀 문구 없음 (회원가입 없이 무료 · 서버 전송)', !bodyText.includes('회원가입 없이 무료') && !bodyText.includes('서버로 전송되지'));
   check('홈 화면 라이브 데모 재생', await page.evaluate(() => window.__wvm.heroPlaying()));
@@ -131,8 +131,8 @@ try {
   const picked = await page.evaluate(() => window.__wvm.theme().id);
   const checkedCard = await page.$eval('#theme-list input[name="theme"]:checked', (e) => e.value);
   check(
-    '쇼케이스 카드 10장 · 누르면 그 스타일 선택',
-    ringCount === 10 && front2 === target && picked === target && checkedCard === target && target !== themeBefore,
+    '쇼케이스 카드 17장 · 누르면 그 스타일 선택',
+    ringCount === 17 && front2 === target && picked === target && checkedCard === target && target !== themeBefore,
     `${ringCount}장, ${themeBefore} → ${picked} (앞 카드 ${front2})`,
   );
   await page.locator('#style-stage').scrollIntoViewIfNeeded();
@@ -148,23 +148,27 @@ try {
   await page.click('label.theme-card:has(input[value="modern"])');
   const demoName = ((await page.textContent('#style-demo-name')) ?? '').trim();
   check('스타일을 고르면 그 스타일 예시로 바뀜', demoName.startsWith('모던'), demoName);
-  // 분위기 필터: 힙한 → 스트릿·네온·캠코더
+  // 분위기 필터: 힙한 → 매거진 화보·스트릿·네온·썸머 비치·레트로·캠코더
   await page.click('#mood-filter button[data-mood="hip"]');
   const hipCards = await page.$$eval('#theme-list .theme-card', (els) => els.filter((e) => !e.hidden).map((e) => e.querySelector('input').value));
-  check('분위기 필터 (힙한)', hipCards.join(',') === 'street,neon,camcorder', hipCards.join(','));
+  check('분위기 필터 (힙한)', hipCards.join(',') === 'editorial,street,neon,summer,retro,camcorder', hipCards.join(','));
   await page.click('#mood-filter button[data-mood="all"]');
-  // 양식·오프닝 디자인·효과 선택
+  // 양식·오프닝 디자인·효과 선택 (오프닝은 꾸미기 '오프닝' 탭, 효과는 '효과' 탭)
   await page.click('label.theme-card:has(input[value="garden"])');
   const variants = await page.$$eval('#variant-list input', (els) => els.map((e) => e.value));
   await page.click('label.variant-card:has(input[value="winter"])');
+  await page.click('#czt-opening');
   await page.click('#title-options button[data-value="movie"]');
+  await page.click('#czt-effect');
   await page.click('#particle-options button[data-value="hearts"]');
   const th = await page.evaluate(() => window.__wvm.theme());
   check('양식 4가지 중 선택 (가든 · 겨울 눈꽃)', variants.length === 4 && th.id === 'garden' && th.variant === 'winter', `${variants.join(',')} → ${th.variant}`);
   check('오프닝 디자인 · 효과 선택', th.title === 'movie' && th.particle === 'hearts', `${th.title}, ${th.particle}`);
   await page.waitForFunction(() => document.querySelectorAll('#variant-list .vposter[style*="data:image"]').length === 4, null, { timeout: 20000 }).catch(() => undefined);
   check('양식 미니 포스터', (await page.locator('#variant-list .vposter[style*="data:image"]').count()) === 4);
+  await page.click('#czt-opening');
   await page.click('#title-options button[data-value="auto"]');
+  await page.click('#czt-effect');
   await page.click('#particle-options button[data-value="auto"]');
   const back = await page.evaluate(() => window.__wvm.theme());
   check('추천 설정으로 되돌리기', back.title === 'wreath' && back.particle === 'snow', `${back.title}, ${back.particle}`);
@@ -259,7 +263,8 @@ try {
     (await page.locator('#timeline-error').isHidden()) && (await page.locator('#photo-grid li.photo.unused').count()) === 0,
     await summary(),
   );
-  // 한 장씩 보여주면 3분에는 다 못 넣음
+  // 한 장씩 보여주면 3분에는 다 못 넣음 ('여러 장 모아 보기'는 꾸미기 '전환 · 연출' 탭)
+  await page.click('#czt-motion');
   await page.uncheck('#f-group');
   const warnVisible = await page.locator('#timeline-error').isVisible();
   const unused = await page.locator('#photo-grid li.photo.unused').count();

@@ -1,4 +1,4 @@
-// 입력값(문구·스타일 등)을 브라우저에 저장해 새로고침해도 유지. 사진·음악은 저장하지 않음.
+// 입력값(문구·스타일·꾸미기 등)을 브라우저에 저장해 새로고침해도 유지. 사진·음악은 저장하지 않음.
 
 import type { WeddingInfo } from './types';
 
@@ -12,9 +12,11 @@ export interface SavedSettings {
   themeId: string;
   /** 스타일 안의 양식 (없으면 기본 양식) */
   variantId?: string | null;
-  /** 오프닝 디자인·흩날리는 효과 ('auto'면 스타일 추천) */
+  /** 예전 버전: 오프닝 디자인·흩날리는 효과 ('auto'면 스타일 추천). 지금은 custom 안에 저장 */
   titleDesign?: string;
   particle?: string;
+  /** 꾸미기에서 고른 값 (글씨체·색감·효과·전환 등, 검사는 themes.sanitizeCustom) */
+  custom?: Record<string, unknown>;
   groupPhotos: boolean;
   durationMode: DurationMode;
   quality: '1080p' | '720p';
@@ -27,7 +29,7 @@ export function loadSettings(): Partial<SavedSettings> {
       const data = JSON.parse(raw) as Partial<SavedSettings>;
       return typeof data === 'object' && data ? data : {};
     }
-    // 이전 버전: 입력한 문구만 이어받고 스타일은 새 기본값(로맨틱)으로
+    // 이전 버전: 입력한 문구만 이어받고 스타일은 새 기본값으로
     const old = localStorage.getItem(OLD_KEY);
     if (old) {
       const data = JSON.parse(old) as Partial<SavedSettings> & { pairPortraits?: boolean };
