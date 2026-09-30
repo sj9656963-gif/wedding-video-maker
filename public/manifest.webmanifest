@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "식전영상 메이커",
+  "short_name": "식전영상",
+  "description": "사진만 올리면 3~5분 웨딩 식전영상(MP4)을 휴대폰·PC에서 바로 만들어요.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "ko",
+  "dir": "ltr",
+  "background_color": "#f6f2ec",
+  "theme_color": "#f6f2ec",
+  "categories": ["photo", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

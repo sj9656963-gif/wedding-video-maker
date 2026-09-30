@@ -1,0 +1,5 @@
+node_modules/
+dist/
+e2e/out/
+e2e/fixtures/
+*.log
