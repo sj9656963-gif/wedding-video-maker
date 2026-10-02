@@ -350,6 +350,21 @@ describe('buildTimeline', () => {
     for (const s of clocks) expect(s.transitionIn!.direction).toBe(1);
   });
 
+  it('앨범 넘김·빛줄기 전환은 늘 같은 방향 (책장은 앞으로만 넘어감)', () => {
+    const tl = buildTimeline(
+      input(makePhotos(40, 'landscape'), 200, {
+        transitionTypes: [
+          { type: 'page', weight: 1 },
+          { type: 'shine', weight: 1 },
+          { type: 'push', weight: 1 },
+        ],
+      }),
+    );
+    const own = tl.segments.filter((s) => s.kind === 'photo' && s.index > 0 && (s.transitionIn!.type === 'page' || s.transitionIn!.type === 'shine'));
+    expect(own.length).toBeGreaterThan(2);
+    for (const s of own) expect(s.transitionIn!.direction).toBe(1);
+  });
+
   it('특수 전환은 연달아 반복되지 않는다', () => {
     const tl = buildTimeline(themed('romantic', makePhotos(80), 300));
     const types = tl.segments.slice(2).map((s) => s.transitionIn!.type);

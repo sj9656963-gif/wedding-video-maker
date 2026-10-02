@@ -633,35 +633,69 @@ export function drawFilmstripScene(env: SceneEnv, seg: PhotoSegment, st: SceneTi
 
 // ───────────────────────── 연도 챕터 ─────────────────────────
 
-/** 촬영 연도가 바뀌는 장면 왼쪽 아래에 연도 표시 (레터박스·캠코더 표시 위로 올려 가려지지 않게) */
-export function drawYearChapter(env: SceneEnv, year: number, st: SceneTime): void {
+/**
+ * 촬영 연도가 바뀌는 장면 왼쪽 아래에 연도 표시 (레터박스·캠코더 표시 위로 올려 가려지지 않게).
+ * card = 액자형 사진 카드의 자리: 기본 자리가 카드 테두리에 걸치면 카드 안쪽 왼쪽 아래에 씀
+ */
+export function drawYearChapter(env: SceneEnv, year: number, st: SceneTime, card?: { x: number; y: number; w: number; h: number } | null): void {
   const { ctx, theme, k } = env;
   const start = st.tin + 0.15;
   const a = smoothstep(start, start + 0.7, st.u) * (1 - smoothstep(start + 2.9, start + 3.7, st.u));
   if (a <= 0.002) return;
   ctx.save();
   const lift = Math.max(128, overlayInsets(theme).textBottom + 40);
-  const scrim = ctx.createRadialGradient(0, H - lift + 128, 0, 0, H - lift + 128, 760);
+  // 왼쪽 아래 모서리 장식(코너 곡선·아르데코 빛살)을 피해 오른쪽으로
+  let x = theme.overlays.includes('corners') || theme.overlays.includes('deco') ? 236 : 120;
+  let base0 = H - lift;
+  let clip = false;
+  if (card) {
+    // 글자 묶음(문구 + 연도 + 밑줄)이 차지하는 대략의 자리
+    const hit = card.x < x + 420 && card.x + card.w > x && card.y < base0 + 44 && card.y + card.h > base0 - 214;
+    if (hit && card.h >= 340 && card.w >= 520) {
+      x = card.x + 64;
+      base0 = card.y + card.h - 66;
+      clip = true;
+    }
+  }
+  ctx.save();
+  if (clip && card) {
+    ctx.beginPath();
+    ctx.rect(card.x, card.y, card.w, card.h);
+    ctx.clip();
+  }
+  const sx = x - 120;
+  const scrim = ctx.createRadialGradient(sx, base0 + 128, 0, sx, base0 + 128, 760);
   scrim.addColorStop(0, `rgba(0,0,0,${(0.42 * a).toFixed(3)})`);
   scrim.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = scrim;
   ctx.fillRect(0, 0, W, H);
+  ctx.restore();
   ctx.globalAlpha *= a;
-  ctx.shadowColor = theme.colors.textShadow;
-  ctx.shadowBlur = 20 * k;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  const x = 120;
-  const base = H - lift + (1 - a) * 16;
+  const base = base0 + (1 - a) * 16;
   const script = theme.titleStyle === 'script';
+  // 가는 필기체·작은 대문자도 밝은 사진 위에서 읽히도록: 넓게 번지는 그림자 + 바짝 붙은 진한 그림자
+  const label = (draw: () => void) => {
+    ctx.shadowColor = theme.colors.textShadow;
+    ctx.shadowBlur = 20 * k;
+    draw();
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 4 * k;
+    ctx.shadowOffsetY = 1.5 * k;
+    draw();
+    ctx.shadowOffsetY = 0;
+  };
   ctx.fillStyle = theme.colors.accent;
   if (script) {
     ctx.font = fontSpec(theme.fonts.title, 64, theme.fonts.titleWeight);
-    ctx.fillText('Our story', x + 4, base - 150);
+    label(() => ctx.fillText('Our story', x + 4, base - 150));
   } else {
-    ctx.font = fontSpec(theme.fonts.latin, 28, 500);
-    ctx.fillText('O U R   S T O R Y', x + 6, base - 160);
+    ctx.font = fontSpec(theme.fonts.latin, 32, 500);
+    label(() => ctx.fillText('O U R   S T O R Y', x + 6, base - 160));
   }
+  ctx.shadowColor = theme.colors.textShadow;
+  ctx.shadowBlur = 20 * k;
   ctx.fillStyle = theme.colors.text;
   ctx.font = fontSpec(theme.fonts.latin, 150, 500);
   ctx.fillText(String(year), x, base);

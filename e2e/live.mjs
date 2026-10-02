@@ -48,6 +48,25 @@ const demoPixels = (p) =>
     return Array.from(x.getImageData(0, 0, 96, 54).data.filter((_, i) => i % 4 !== 3));
   });
 const diff = (a, b) => a.reduce((s, v, i) => s + Math.abs(v - b[i]), 0) / a.length;
+/** 세부 설정(양식·꾸미기)이 열려 있는지, 그 카드가 있는 줄 바로 아래인지 */
+const detailAt = (p, id) =>
+  p.evaluate((id) => {
+    const card = document.querySelector(`label.theme-card:has(input[value="${id}"])`);
+    const cr = card.getBoundingClientRect();
+    const d = document.querySelector('#style-detail');
+    const r = d.getBoundingClientRect();
+    return {
+      open: !d.hidden && window.__wvm.detailOpen(),
+      gap: Math.round(r.top - cr.bottom),
+      top: Math.round(r.top),
+      cardTop: Math.round(cr.top),
+      cardBottom: Math.round(cr.bottom),
+      vh: window.innerHeight,
+      name: document.querySelector('#sd-name').textContent,
+      cardName: card.querySelector('strong').textContent,
+      theme: window.__wvm.theme().id,
+    };
+  }, id);
 const saveCanvas = async (p, sel, name) => {
   const data = await p.$eval(sel, (c) => c.toDataURL('image/png'));
   fs.writeFileSync(out(name), Buffer.from(data.split(',')[1], 'base64'));
@@ -78,7 +97,52 @@ try {
   check('PC: 적용 안내 표시', toast.includes('러블리'), toast);
   await page.screenshot({ path: out('live-pc-lovely.png') });
 
+  // 고른 카드 바로 아래에 세부 설정(양식·꾸미기)이 열림 → 다른 줄의 카드를 누르면 그 줄 아래로 따라감
+  await page.waitForTimeout(700);
+  const d1 = await detailAt(page, 'lovely');
+  check(
+    'PC: 카드를 누르면 그 줄 바로 아래에 세부 설정 (화면 안)',
+    d1.open && d1.gap >= 0 && d1.gap <= 40 && d1.top < d1.vh - 150 && d1.cardTop >= 60 && d1.name === '러블리',
+    JSON.stringify(d1),
+  );
+  await page.click('label.theme-card:has(input[value="gallery"])');
+  await page.waitForTimeout(900);
+  const d2 = await detailAt(page, 'gallery');
+  check('PC: 다른 줄의 카드를 누르면 세부 설정이 그 카드 아래로', d2.open && d2.gap >= 0 && d2.gap <= 40 && d2.top < d2.vh - 150 && d2.name === d2.cardName, JSON.stringify(d2));
+  const nextBefore = (await page.locator('#style-detail').boundingBox()).y;
+  await page.click('#sd-next');
+  await page.waitForTimeout(500);
+  const d3 = await detailAt(page, 'classic');
+  const nextAfter = (await page.locator('#style-detail').boundingBox()).y;
+  check(
+    "PC: '다음 스타일'은 세부 설정 자리를 그대로 두고 스타일만 바꿈",
+    d3.theme === 'classic' && d3.name === '클래식' && d3.gap >= 0 && d3.gap <= 40 && Math.abs(nextAfter - nextBefore) <= 3,
+    `${d2.theme} → ${d3.theme}, 위치 ${Math.round(nextBefore)} → ${Math.round(nextAfter)}`,
+  );
+  await page.click('#sd-prev');
+  await page.waitForTimeout(400);
+  const back1 = await page.evaluate(() => window.__wvm.theme().id);
+  check("PC: '이전 스타일'로 되돌아감", back1 === 'gallery', back1);
+  await page.click('label.theme-card:has(input[value="gallery"])');
+  await page.waitForTimeout(300);
+  const closed = !(await page.evaluate(() => window.__wvm.detailOpen())) && (await page.locator('#style-detail').isHidden());
+  await page.click('label.theme-card:has(input[value="gallery"])');
+  await page.waitForTimeout(300);
+  check('PC: 고른 카드를 다시 누르면 세부 설정 접기·펴기', closed && (await page.evaluate(() => window.__wvm.detailOpen())));
+  await page.screenshot({ path: out('live-pc-detail.png') });
+  await page.click('label.theme-card:has(input[value="lovely"])');
+  await page.waitForTimeout(700);
+
   // 꾸미기 (카드 아래쪽 탭까지 내려가도 미리보기가 보임)
+  await page.evaluate(() => document.querySelector('#custom-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await page.evaluate(() => window.scrollBy(0, 500));
+  await page.waitForTimeout(300);
+  const head = await page.$eval('.sd-head', (el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width - 30, r.top + r.height / 2);
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), onTop: !!hit && el.contains(hit) };
+  });
+  check("PC: 꾸미기를 보다가도 '이전·다음 스타일·접기'가 위에 붙어 있음", head.top >= 70 && head.top <= 100 && head.onTop, JSON.stringify(head));
   await page.evaluate(() => document.querySelector('#custom-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
   await page.click('#czt-font');
   await page.click('#fr-name');
@@ -122,6 +186,12 @@ try {
   await page.waitForFunction(() => window.__wvm?.demoReady(), null, { timeout: 30000 });
   const t3 = await page.evaluate(() => window.__wvm.theme());
   check('꾸미기가 새로고침 뒤에도 유지', t3.id === 'lovely' && t3.custom.fontName === 'Gaegu' && t3.custom.transition === 'clock', JSON.stringify(t3.custom));
+  // 새로 열면 카드 목록이 다 보이게 접혀 있고, 고른 카드를 누르면 바로 아래에 열림
+  const closedAtStart = !(await page.evaluate(() => window.__wvm.detailOpen()));
+  await page.click('label.theme-card:has(input[value="lovely"])');
+  await page.waitForTimeout(500);
+  const d4 = await detailAt(page, 'lovely');
+  check('새로 열면 접혀 있다가, 고른 카드를 누르면 그 아래에 열림', closedAtStart && d4.open && d4.gap >= 0 && d4.gap <= 40, JSON.stringify(d4));
   await page.click('#cz-reset');
   const t4 = await page.evaluate(() => window.__wvm.theme());
   check('모두 스타일 기본으로 되돌리기', Object.keys(t4.custom).length === 0 && (await page.locator('#cz-reset').isHidden()), JSON.stringify(t4.custom));
@@ -175,6 +245,15 @@ try {
   check('흑백 필터가 내 영상 미리보기에 바로 적용 (화면 안)', gray < 6 && pv.ok, `채도 ${gray.toFixed(1)}, ${JSON.stringify(pv)}`);
   await page.screenshot({ path: out('live-pc-mine.png') });
   await page.click('#cz-reset');
+  // 맨 아래 '다 골랐어요 · 접기': 접히고 고른 카드가 화면에 보임
+  await page.locator('#sd-done').scrollIntoViewIfNeeded();
+  await page.click('#sd-done');
+  await page.waitForTimeout(400);
+  const done = await page.evaluate(() => {
+    const r = document.querySelector('label.theme-card:has(input:checked)').getBoundingClientRect();
+    return { open: window.__wvm.detailOpen(), top: Math.round(r.top), bottom: Math.round(r.bottom), vh: window.innerHeight };
+  });
+  check("PC: '다 골랐어요'를 누르면 접히고 고른 카드가 화면 안에", !done.open && done.top >= 60 && done.bottom <= done.vh, JSON.stringify(done));
   await page.close();
 
   // ───────────── 휴대폰 (390×844) ─────────────
@@ -204,6 +283,20 @@ try {
   const mname = ((await m.textContent('#style-demo-name')) ?? '').trim();
   check('휴대폰: 카드를 누르면 위쪽 예시가 바로 바뀜', mname.startsWith('전통 혼례') && (await inViewport(m, '#style-stage')).ok, mname);
   await m.screenshot({ path: out('live-mobile-style.png') });
+  const md1 = await detailAt(m, 'traditional');
+  const mLiveBottom = await m.$eval('#live-mobile .live-box', (el) => el.getBoundingClientRect().bottom);
+  check(
+    '휴대폰: 카드를 누르면 바로 아래에 세부 설정 (위쪽 미리보기에 안 가림)',
+    md1.open && md1.gap >= 0 && md1.gap <= 40 && md1.top >= mLiveBottom - 1 && md1.top <= md1.vh - 120,
+    `${JSON.stringify(md1)}, 미리보기 끝 ${Math.round(mLiveBottom)}`,
+  );
+  const mBefore = (await m.locator('#style-detail').boundingBox()).y;
+  await m.locator('#sd-next').tap();
+  await m.waitForTimeout(500);
+  const mAfter = (await m.locator('#style-detail').boundingBox()).y;
+  const mt2 = await m.evaluate(() => ({ id: window.__wvm.theme().id, name: document.querySelector('#sd-name').textContent }));
+  check("휴대폰: '다음 스타일'로 스크롤 없이 바꿔 보기", mt2.id === 'editorial' && Math.abs(mAfter - mBefore) <= 3, `${JSON.stringify(mt2)}, 위치 ${Math.round(mBefore)} → ${Math.round(mAfter)}`);
+  await m.screenshot({ path: out('live-mobile-detail.png') });
   await m.evaluate(() => document.querySelector('#czp-opening')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await m.waitForTimeout(400);
   await m.locator('#title-options button[data-value="storybook"]').tap();
@@ -211,6 +304,24 @@ try {
   const ms2 = await inViewport(m, '#style-stage');
   const mt = await m.evaluate(() => window.__wvm.theme());
   check('휴대폰: 오프닝 디자인을 고르면 위쪽에서 바로 확인', mt.title === 'storybook' && ms2.ok, JSON.stringify(ms2));
+  const mhead = await m.evaluate(() => {
+    const head = document.querySelector('.sd-head');
+    const r = head.getBoundingClientRect();
+    const t = head.querySelector('.sd-title').getBoundingClientRect();
+    const n = head.querySelector('.sd-nav').getBoundingClientRect();
+    const live = document.querySelector('#live-mobile .live-box').getBoundingClientRect();
+    const hit = document.elementFromPoint(r.right - 24, r.top + r.height / 2);
+    return {
+      top: Math.round(r.top),
+      h: Math.round(r.height),
+      liveBottom: Math.round(live.bottom),
+      onTop: !!hit && head.contains(hit),
+      oneRow: Math.abs(t.top + t.height / 2 - (n.top + n.height / 2)) < 6,
+      title: head.querySelector('.sd-title').textContent,
+    };
+  });
+  check('휴대폰: 꾸미기를 보는 동안 세부 설정 머리줄이 미리보기 바로 아래에 붙음 (한 줄)', mhead.onTop && mhead.oneRow && mhead.h <= 64 && mhead.top >= mhead.liveBottom - 1 && mhead.top <= mhead.liveBottom + 16, JSON.stringify(mhead));
+  await m.screenshot({ path: out('live-mobile-sticky-head.png') });
   await m.screenshot({ path: out('live-mobile-opening.png') });
   await m.locator('#live-collapse').tap();
   const collapsedH = (await m.locator('#live-mobile .live-box').boundingBox())?.height ?? 999;

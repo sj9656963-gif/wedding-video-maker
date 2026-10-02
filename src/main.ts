@@ -575,6 +575,19 @@ function placeLive(): void {
   if (liveBox.parentElement !== target) target.append(liveBox);
 }
 
+/** 화면 위쪽에 붙어 내용을 가리는 높이: 메뉴, 휴대폰은 위쪽에 붙는 미리보기까지 */
+function stuckTop(): number {
+  const nav = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 72;
+  if (!narrow.matches || liveBox.parentElement !== liveMobile || getComputedStyle(liveMobile).position !== 'sticky') return nav;
+  return nav + 6 + liveBox.offsetHeight;
+}
+
+/** 세부 설정 머리줄(이전·다음 스타일)이 위쪽 미리보기 바로 아래에 붙도록 CSS 값으로 */
+function syncStuckTop(): void {
+  document.documentElement.style.setProperty('--stuck-top', `${Math.round(stuckTop())}px`);
+}
+new ResizeObserver(syncStuckTop).observe(liveBox);
+
 function setLiveTab(tab: LiveTab, focusTab = false): void {
   liveTab = tab;
   for (const [t, btn, pane] of [
@@ -812,7 +825,9 @@ document.addEventListener('visibilitychange', updateDemoPlayback);
 
 const picker = new StylePicker({
   initial: { themeId: state.themeId, variantId: state.variantId },
-  poster: (t, w, ph) => renderPoster(t, demoInfo(state.info), w, ph),
+  poster: (t, w, ph, at) => renderPoster(t, demoInfo(state.info), w, ph, at),
+  topInset: stuckTop,
+  onDetail: (open) => customizer.setVisible(open),
   onChange: (sel, what) => {
     state.themeId = sel.themeId;
     state.variantId = sel.variantId;
@@ -929,8 +944,9 @@ document.addEventListener('visibilitychange', updateHeroPlayback);
 
 const site = initSite({
   onPickStyle: (id) => {
+    // 고른 스타일 카드로 이동하고, 그 아래에 양식·꾸미기를 열어 둠
     picker.select(id);
-    document.getElementById('style-card')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    picker.scrollToSelection();
   },
 });
 
@@ -1231,17 +1247,20 @@ new IntersectionObserver(
 ).observe(liveBox);
 narrow.addEventListener('change', () => {
   placeLive();
+  syncStuckTop();
   updateFab();
 });
 // 자판이 올라와 있을 때는 버튼이 입력칸을 가리지 않도록 숨기고, 휴대폰에서는 붙어 있던 미리보기도 제자리로
 document.addEventListener('focusin', (e) => {
   typing = (e.target as HTMLElement).matches?.('input[type="text"], input[type="date"], input[type="time"], textarea') ?? false;
   document.body.classList.toggle('typing', typing);
+  syncStuckTop();
   updateFab();
 });
 document.addEventListener('focusout', () => {
   typing = false;
   document.body.classList.remove('typing');
+  syncStuckTop();
   updateFab();
 });
 fab.addEventListener('click', openPreviewSheet);
@@ -1306,6 +1325,7 @@ if (new URLSearchParams(location.search).has('e2e')) {
     demoTime: () => demo.currentTime,
     heroPlaying: () => heroDemo.isPlaying,
     liveTab: () => liveTab,
+    detailOpen: () => picker.detailOpen,
     /** 사진마다 문구 넣기 (화면 캡처 점검용): fn(순서) → 문구 */
     setCaptions: (fn: (index: number) => string) => {
       state.photos.forEach((p, i) => {

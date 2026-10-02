@@ -8,7 +8,7 @@ import { easeOutBack } from './layouts-extra';
 import { hash01 } from './random';
 import { wrapText } from './text-layout';
 import { fontSpec, type Theme, type ThemeLook } from './themes';
-import { bubbly, cover, hanji, monogram, postcard, storybook, sunburst } from './titles-extra';
+import { arch, bubbly, cover, hanji, monogram, postcard, storybook, sunburst } from './titles-extra';
 import type { WeddingInfo } from './types';
 
 export const HANGUL = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
@@ -1211,6 +1211,9 @@ function draw(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: bool
       break;
     case 'sunburst':
       sunburst(env, info, u, f, outro);
+      break;
+    case 'arch':
+      arch(env, info, u, f, outro);
       break;
     case 'classic':
       break;

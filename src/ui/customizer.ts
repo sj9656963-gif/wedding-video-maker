@@ -187,6 +187,8 @@ export class Customizer {
   private hovering = false;
   private posterJob = 0;
   private postersDirty = true;
+  /** 세부 설정이 열려 있어 화면에 보이는지 (닫혀 있으면 카드 그림을 미뤄 둠) */
+  private visible = false;
 
   constructor(private readonly opts: CustomizerOptions) {
     this.custom = sanitizeCustom(opts.initial);
@@ -220,7 +222,19 @@ export class Customizer {
     }
     this.sync();
     this.postersDirty = true;
-    if (this.panel === 'opening') void this.renderPosters();
+    if (this.panel === 'opening' && this.visible) void this.renderPosters();
+  }
+
+  /** 세부 설정이 열리고 닫힐 때 (닫히면 미리 보기 중이던 것을 원래대로) */
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    if (visible) {
+      if (this.panel === 'opening' && this.postersDirty) void this.renderPosters();
+      return;
+    }
+    clearTimeout(this.hoverTimer);
+    if (this.hovering) this.opts.onPreview?.(null, null);
+    this.hovering = false;
   }
 
   /** 모든 꾸미기를 스타일 기본값으로 */
@@ -234,7 +248,7 @@ export class Customizer {
   /** 오프닝 디자인 카드 그림을 다시 그려야 함 (문구·꾸미기가 바뀐 경우) */
   invalidatePosters(): void {
     this.postersDirty = true;
-    if (this.panel === 'opening') void this.renderPosters();
+    if (this.panel === 'opening' && this.visible) void this.renderPosters();
   }
 
   private roleFamily(plain: Theme, role: FontRole): string {
@@ -268,7 +282,7 @@ export class Customizer {
       this.fontsRequested = true;
       void loadAllFontCss();
     }
-    if (id === 'opening' && this.postersDirty) void this.renderPosters();
+    if (id === 'opening' && this.postersDirty && this.visible) void this.renderPosters();
   }
 
   private showRole(role: FontRole, focus = false): void {

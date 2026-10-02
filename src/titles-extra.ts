@@ -1519,3 +1519,176 @@ export function sunburst(env: TextEnv, info: WeddingInfo, u: number, f: number, 
   }
   ctx.restore();
 }
+
+
+// ───────────────────────── 아치 프레임 (클래식) ─────────────────────────
+
+/** 위가 둥근 아치(문) 모양의 닫힌 경로 */
+function archOutline(ctx: CanvasRenderingContext2D, cx: number, top: number, bottom: number, w: number): void {
+  const r = w / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - r, bottom);
+  ctx.lineTo(cx - r, top + r);
+  ctx.arc(cx, top + r, r, Math.PI, Math.PI * 2);
+  ctx.lineTo(cx + r, bottom);
+  ctx.closePath();
+}
+
+/** 양쪽 아래에서 올라가 꼭대기에서 만나는 아치 선 (p = 그려진 정도). glow면 그려지는 선 끝에 작은 빛 */
+function drawArchLine(ctx: CanvasRenderingContext2D, cx: number, top: number, bottom: number, w: number, p: number, glow: boolean): void {
+  if (p <= 0) return;
+  const r = w / 2;
+  const straight = Math.max(0, bottom - (top + r));
+  const half = straight + (Math.PI * r) / 2;
+  const d = half * Math.min(1, p);
+  ctx.save();
+  ctx.setLineDash([d, half + 20]);
+  for (const side of [-1, 1] as const) {
+    ctx.beginPath();
+    ctx.moveTo(cx + side * r, bottom);
+    ctx.lineTo(cx + side * r, top + r);
+    if (side < 0) ctx.arc(cx, top + r, r, Math.PI, Math.PI * 1.5);
+    else ctx.arc(cx, top + r, r, 0, -Math.PI / 2, true);
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (!glow || p >= 1) return;
+  for (const side of [-1, 1] as const) {
+    let x: number;
+    let y: number;
+    if (d <= straight) {
+      x = cx + side * r;
+      y = bottom - d;
+    } else {
+      const th = side < 0 ? Math.PI + (d - straight) / r : -(d - straight) / r;
+      x = cx + Math.cos(th) * r;
+      y = top + r + Math.sin(th) * r;
+    }
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 20);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save();
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 20, y - 20, 40, 40);
+    ctx.restore();
+  }
+}
+
+/** 아치 프레임: 금빛 두 줄 아치가 양쪽 아래에서 그려져 꼭대기에서 만나고, 그 안에 제목·이름·날짜 */
+export function arch(env: TextEnv, info: WeddingInfo, u: number, f: number, outro: boolean): void {
+  const { ctx, theme } = env;
+  const c = theme.colors;
+  const fs = theme.fonts;
+  const look = theme.look;
+  const sp = Math.max(0.55, f);
+  const base = ctx.globalAlpha;
+  const w = outro ? 700 : 620;
+  const top = outro ? 96 : 108;
+  const bottom = outro ? 960 : 930;
+  const p1 = easeInOutSine((u - 0.15 * f) / (1.5 * sp));
+  const p2 = easeInOutSine((u - 0.4 * f) / (1.5 * sp));
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // 아치 안쪽을 살짝 어둡게 (밝은 사진 위에서도 글자가 또렷하게)
+  if (p1 > 0) {
+    ctx.save();
+    ctx.globalAlpha = base * 0.34 * p1;
+    ctx.fillStyle = c.bg;
+    archOutline(ctx, CX, top, bottom, w);
+    ctx.fill();
+    ctx.restore();
+  }
+  softShadow(env, 12);
+  ctx.strokeStyle = c.accent;
+  ctx.fillStyle = c.accent;
+  ctx.globalAlpha = base;
+  ctx.lineWidth = 3;
+  drawArchLine(ctx, CX, top, bottom, w, p1, true);
+  ctx.globalAlpha = base * 0.75;
+  ctx.lineWidth = 1.2;
+  drawArchLine(ctx, CX, top + 15, bottom - 15, w - 30, p2, false);
+  const item = (at: number, draw: (a: number) => void) => {
+    const a = appear(u, at * f, 0.9 * sp);
+    if (a <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = base * a;
+    draw(a);
+    ctx.restore();
+  };
+  // 바닥선과 꼭대기의 마름모 (아치가 다 그려진 뒤)
+  item(1.5, () => {
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(CX - w / 2 - 22, bottom);
+    ctx.lineTo(CX + w / 2 + 22, bottom);
+    ctx.stroke();
+    ctx.translate(CX, top);
+    ctx.scale(1.7, 1.7);
+    drawOrnament(ctx, 'diamond', 0, 0, c.accent);
+  });
+  const face = titleFace(theme, titleOf(env, info, outro));
+  const body = bodyFont(theme);
+  if (!outro) {
+    item(0.9, () => {
+      ctx.fillStyle = c.sub;
+      ctx.font = fontSpec(fs.latin, 22, 500);
+      spaced(ctx, 'THE WEDDING OF', CX, 252, 7);
+    });
+    item(1.1, (a) => {
+      ctx.fillStyle = c.accent;
+      drawFace(ctx, face, CX, 336 + (1 - a) * 12, 480, 88);
+    });
+    item(1.4, () => drawDividerAt(ctx, look, CX, 414, c.accent, 110));
+    const g = info.groom.trim();
+    const b = info.bride.trim();
+    const name = (text: string, y: number) => {
+      ctx.fillStyle = c.text;
+      fitFont(ctx, text, 440, nameFont(theme), 58);
+      ctx.fillText(text, CX, y);
+    };
+    if (g && b) {
+      item(1.6, () => name(g, 506));
+      item(1.8, () => drawNameJoin(env, CX, 574, 54, c.accent));
+      item(1.95, () => name(b, 642));
+    } else if (g || b) item(1.6, () => name(g || b, 574));
+    const lines = [formatKoreanDate(info.date, info.time), info.venue.trim()].filter(Boolean);
+    lines.forEach((line, i) =>
+      item(2.3 + i * 0.2, () => {
+        ctx.fillStyle = c.sub;
+        fitFont(ctx, line, 480, body, i === 0 ? 32 : 28);
+        ctx.fillText(line, CX, 744 + i * 52);
+      }),
+    );
+    item(2.7, () => drawDividerAt(ctx, look, CX, bottom - 48, c.accent, 64));
+  } else {
+    item(0.9, (a) => {
+      ctx.fillStyle = c.accent;
+      drawFace(ctx, face, CX, 300 + (1 - a) * 12, 520, 84);
+    });
+    item(1.2, () => drawDividerAt(ctx, look, CX, 376, c.accent, 110));
+    const lines = messageLines(ctx, info, body(36), 560, 4);
+    let y = 456;
+    lines.forEach((line, i) => {
+      const ly = y;
+      item(1.5 + i * 0.2, () => {
+        ctx.fillStyle = c.text;
+        ctx.font = body(36);
+        ctx.fillText(line, CX, ly);
+      });
+      y += 54;
+    });
+    item(2.4, () => drawNamesRow(env, info, CX, y + 34, 46, nameFont(theme), c.text, c.accent, 'center', 540));
+    const notice = info.outroNotice.trim();
+    if (notice)
+      item(3, () => {
+        ctx.globalAlpha *= 0.8 + 0.2 * Math.sin(u * 2.2);
+        ctx.fillStyle = c.accent;
+        fitFont(ctx, notice, 560, (s) => fontSpec(fs.body, s, fs.bodyBold), 30);
+        ctx.fillText(notice, CX, bottom - 122);
+      });
+    item(2.7, () => drawDividerAt(ctx, look, CX, bottom - 48, c.accent, 64));
+  }
+  ctx.restore();
+}

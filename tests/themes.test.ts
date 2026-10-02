@@ -45,6 +45,48 @@ describe('스타일과 양식', () => {
     expect(getTheme('romantic').badge).toBeUndefined();
   });
 
+  it('클래식은 양식 10가지, 새 양식은 NEW 표시와 저마다 다른 오프닝·효과·전환', () => {
+    const classic = getTheme('classic');
+    expect(classic.variants.length).toBeGreaterThanOrEqual(10);
+    const fresh = classic.variants.filter((v) => v.isNew);
+    expect(fresh.map((v) => v.id)).toEqual(['arch', 'chapel', 'candle', 'deco', 'antique', 'beige']);
+    // 원래 있던 양식은 그대로 (저장해 둔 선택이 바뀌지 않게)
+    expect(classic.variants.slice(0, 4).map((v) => v.id)).toEqual(['ivory', 'champagne', 'blacktie', 'navy']);
+    const tids = new Set(TRANSITIONS.map((x) => x.id));
+    const looks = new Set<string>();
+    for (const v of fresh) {
+      const t = resolveTheme('classic', { variant: v.id });
+      for (const d of v.demo ?? []) expect(tids.has(d), `${v.id}: ${d}`).toBe(true);
+      for (const d of v.demo ?? []) expect(t.transitions.some((x) => x.type === d), `${v.id}: ${d}`).toBe(true);
+      looks.add(`${t.titleDesign}|${t.overlays.join('+')}|${t.effects.particle}|${t.colors.accent}`);
+    }
+    expect(looks.size).toBe(fresh.length);
+    expect(resolveTheme('classic', { variant: 'arch' }).titleDesign).toBe('arch');
+    expect(resolveTheme('classic', { variant: 'deco' }).overlays).toEqual(['deco']);
+    expect(resolveTheme('classic', { variant: 'deco' }).titleStyle).toBe('caps');
+    expect(resolveTheme('classic', { variant: 'chapel' }).overlays).toEqual(['pearls']);
+    expect(resolveTheme('classic', { variant: 'antique' }).transitions.some((x) => x.type === 'page')).toBe(true);
+    // 다른 스타일의 양식에는 NEW 표시 없음
+    for (const t of THEMES.filter((x) => x.id !== 'classic')) expect(t.variants.some((v) => v.isNew)).toBe(false);
+  });
+
+  it('새 효과: 아치 오프닝, 금박, 진주·아르데코 테두리, 빛줄기·앨범 넘김 전환을 꾸미기에서 고를 수 있음', () => {
+    expect(TITLE_DESIGNS.some((d) => d.id === 'arch')).toBe(true);
+    expect(PARTICLES.some((p) => p.id === 'goldleaf')).toBe(true);
+    expect(FRAMES.map((x) => x.id)).toEqual(expect.arrayContaining(['pearls', 'deco']));
+    expect(TRANSITIONS.map((x) => x.id)).toEqual(expect.arrayContaining(['shine', 'page']));
+    const t = resolveTheme('romantic', { title: 'arch', particle: 'goldleaf', frame: 'pearls', transition: 'page' });
+    expect(t.titleDesign).toBe('arch');
+    expect(t.effects.particle).toBe('goldleaf');
+    expect(t.effects.particles).toBeGreaterThan(0);
+    expect(t.overlays).toEqual(['pearls']);
+    expect(t.transitions).toEqual([{ type: 'page', weight: 1 }]);
+    expect(sanitizeCustom({ frame: 'deco', transition: 'shine', title: 'arch', particle: 'goldleaf' })).toEqual({ title: 'arch', particle: 'goldleaf', frame: 'deco', transition: 'shine' });
+    // 진주·아르데코 테두리 위로 사진 문구가 올라오도록 아래쪽 여백
+    expect(overlayInsets(resolveTheme('classic', { variant: 'chapel' })).textBottom).toBeGreaterThanOrEqual(50);
+    expect(overlayInsets(resolveTheme('classic', { frame: 'deco' })).textBottom).toBeGreaterThanOrEqual(50);
+  });
+
   it('러블리는 로맨틱과 다른 스타일 (귀여운 글씨체·버블 타이틀·비눗방울)', () => {
     const lovely = getTheme('lovely');
     const romantic = getTheme('romantic');

@@ -1,6 +1,6 @@
 // 화면 확인용 캡처: 홈페이지, '왜 직접' 그림, 스타일 예시 영상 장면, 실제 사진으로 만든 모든 배치·전환, 휴대폰(390px) 화면을 원본 해상도로 저장
 // 실행: npm run e2e:visual  → e2e/out/visual/*.png
-//   V_ONLY=page|why|demo|video|mobile 로 일부만, V_THEMES=romantic,cinema 로 스타일 지정,
+//   V_ONLY=page|why|demo|custom|classic|video|mobile 로 일부만, V_THEMES=romantic,cinema 로 스타일 지정 (classic:arch처럼 양식까지),
 //   V_CAPTIONS=1 이면 사진마다 문구를 넣고 캡처(파일 이름에 -cap), E2E_SKIP_BUILD=1 이면 기존 dist 사용
 import fs from 'node:fs';
 import path from 'node:path';
@@ -132,8 +132,8 @@ try {
       await saveCanvas(page, '#style-demo', name);
     };
     const groups = [
-      ['particle', ['roses', 'maple', 'stars', 'glitter', 'bubbles', 'butterflies', 'feathers', 'balloons', 'fireflies', 'notes'], 'scene'],
-      ['frame', ['frame', 'corners', 'lace', 'flowers'], 'scene'],
+      ['particle', ['roses', 'maple', 'stars', 'glitter', 'goldleaf', 'bubbles', 'butterflies', 'feathers', 'balloons', 'fireflies', 'notes'], 'scene'],
+      ['frame', ['frame', 'corners', 'lace', 'flowers', 'pearls', 'deco'], 'scene'],
       ['filter', ['warm', 'cool', 'film', 'mono', 'sepia', 'fade', 'pastel', 'vivid', 'pink', 'golden', 'teal', 'lavender', 'mint'], 'scene'],
       ['ornament', ['flower', 'bow', 'rings', 'crown', 'none'], 'intro'],
       ['nameJoin', ['and', 'rings', 'infinity', 'dot'], 'intro'],
@@ -151,8 +151,15 @@ try {
       }
       await pick(key, 'auto');
     }
+    // 아치 프레임 오프닝·엔딩
+    await pick('title', 'arch');
+    await page.waitForTimeout(400);
+    const archMarks = (await page.evaluate(() => window.__wvm.demoInfo())).marks;
+    await at('custom-title-arch-intro.png', archMarks.intro);
+    await at('custom-title-arch-outro.png', archMarks.outro);
+    await pick('title', 'auto');
     // 전환: 두 번째 장면으로 넘어가는 동안 세 순간
-    for (const v of ['slide', 'split', 'flash', 'mosaic', 'sparkle', 'filmburn', 'rise', 'clock']) {
+    for (const v of ['slide', 'split', 'flash', 'mosaic', 'sparkle', 'filmburn', 'rise', 'clock', 'shine', 'page']) {
       await pick('transition', v);
       await page.waitForTimeout(350);
       const info = await page.evaluate(() => window.__wvm.demoInfo());
@@ -160,6 +167,43 @@ try {
       for (const q of [0.25, 0.5, 0.75]) await at(`custom-transition-${v}-${Math.round(q * 100)}.png`, start + q);
     }
     await pick('transition', 'auto');
+  }
+
+  // ── 클래식 양식 전부 (세부 설정 화면 + 예시 영상 장면) ──
+  if (!only || only === 'classic') {
+    await page.evaluate(() => window.__wvm.demoPause());
+    const card = 'label.theme-card:has(input[value="classic"])';
+    if ((await page.evaluate(() => window.__wvm.theme().id)) !== 'classic') await page.click(card);
+    if (!(await page.evaluate(() => window.__wvm.detailOpen()))) await page.click(card);
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: out('ui-pc-detail.png') });
+    await page.evaluate(() => document.querySelector('#variant-list')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: out('ui-pc-detail-variants.png') });
+    await page.evaluate(() => document.querySelector('#czp-opening')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: out('ui-pc-detail-custom.png') });
+    const vids = await page.$$eval('#variant-list input', (els) => els.map((e) => e.value));
+    for (const v of vids) {
+      await page.click(`label.variant-card:has(input[value="${v}"])`);
+      await page.waitForTimeout(700);
+      await page.evaluate(() => window.__wvm.demoPause());
+      const info = await page.evaluate(() => window.__wvm.demoInfo());
+      const cues = info.cues;
+      for (let i = 0; i < cues.length; i++) {
+        const end = i + 1 < cues.length ? cues[i + 1].start : info.duration;
+        for (const [tag, t] of [
+          ['mid', (cues[i].start + end) / 2 + 0.3],
+          ['tr', end - 0.1],
+        ]) {
+          if (tag === 'tr' && i === cues.length - 1) continue;
+          await page.evaluate((t) => window.__wvm.demoSeek(t), t);
+          await saveCanvas(page, '#style-demo', `cv-${v}-${i}-${tag}.png`);
+        }
+      }
+    }
+    await page.click('label.variant-card:has(input[value="ivory"])');
+    await page.waitForTimeout(400);
   }
 
   // ── 실제 사진으로 모든 배치·전환 ──
@@ -190,9 +234,12 @@ try {
       // 'camcorder:digicam'처럼 쓰면 그 양식까지 골라서 캡처 (파일 이름에는 camcorder-digicam)
       const [thId, variant] = entry.split(':');
       const th = variant ? `${thId}-${variant}` : thId;
-      await page.click(`label.theme-card:has(input[value="${thId}"])`);
+      const card = `label.theme-card:has(input[value="${thId}"])`;
+      // 이미 고른 카드를 다시 누르면 세부 설정이 접히므로, 다른 스타일일 때만 누르고 양식은 세부 설정을 연 채로 고름
+      if ((await page.evaluate(() => window.__wvm.theme().id)) !== thId) await page.click(card);
       await page.waitForTimeout(1200);
       if (variant) {
+        if (!(await page.evaluate(() => window.__wvm.detailOpen()))) await page.click(card);
         await page.click(`label.variant-card:has(input[value="${variant}"])`);
         await page.waitForTimeout(1200);
       }
@@ -242,6 +289,19 @@ try {
     await m.locator('#theme-list').scrollIntoViewIfNeeded();
     await m.waitForTimeout(300);
     await m.screenshot({ path: out('mobile-cards.png') });
+    // 카드를 누르면 바로 아래에 세부 설정
+    await m.evaluate(() => document.querySelector('label.theme-card:has(input[value="lovely"])')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await m.waitForTimeout(300);
+    await m.locator('label.theme-card:has(input[value="lovely"])').tap();
+    await m.waitForTimeout(1600);
+    await m.screenshot({ path: out('mobile-detail.png') });
+    await m.evaluate(() => document.querySelector('#cz-tabs')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await m.waitForTimeout(800);
+    await m.screenshot({ path: out('mobile-detail-custom.png') });
+    await m.locator('#sd-done').scrollIntoViewIfNeeded();
+    await m.locator('#sd-done').tap();
+    await m.waitForTimeout(600);
+    await m.screenshot({ path: out('mobile-detail-done.png') });
     // '왜 직접': 항목마다 글 위의 그림
     const arts = await m.locator('.why-art').count();
     for (let i = 0; i < arts; i++) {

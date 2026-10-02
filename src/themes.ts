@@ -53,9 +53,11 @@ export type TitleDesign =
   | 'storybook'
   | 'monogram'
   | 'postcard'
-  | 'sunburst';
+  | 'sunburst'
+  | 'arch';
 export const TITLE_DESIGNS: readonly { id: TitleDesign; name: string; desc: string }[] = [
   { id: 'classic', name: '클래식', desc: '필기체 제목과 이름이 차례로' },
+  { id: 'arch', name: '아치 프레임', desc: '금빛 아치가 그려지고 그 안에 이름이' },
   { id: 'invitation', name: '청첩장', desc: '종이 카드가 떠오르듯' },
   { id: 'movie', name: '무비 크레딧', desc: '영화 오프닝처럼' },
   { id: 'kinetic', name: '키네틱', desc: '큰 글자가 튀어 들어오는' },
@@ -83,6 +85,7 @@ export type ParticleKind =
   | 'confetti'
   | 'stars'
   | 'glitter'
+  | 'goldleaf'
   | 'bubbles'
   | 'butterflies'
   | 'feathers'
@@ -100,6 +103,7 @@ export const PARTICLES: readonly { id: ParticleKind; name: string }[] = [
   { id: 'confetti', name: '컨페티' },
   { id: 'stars', name: '별' },
   { id: 'glitter', name: '금가루' },
+  { id: 'goldleaf', name: '금박' },
   { id: 'bubbles', name: '비눗방울' },
   { id: 'butterflies', name: '나비' },
   { id: 'feathers', name: '깃털' },
@@ -118,6 +122,7 @@ const PARTICLE_COUNT: Record<ParticleKind, number> = {
   confetti: 26,
   stars: 22,
   glitter: 80,
+  goldleaf: 24,
   bubbles: 16,
   butterflies: 10,
   feathers: 12,
@@ -128,7 +133,7 @@ const PARTICLE_COUNT: Record<ParticleKind, number> = {
 };
 
 /** 영상 전체에 덧씌우는 장치 (화면 테두리·장식 포함) */
-export type OverlayKind = 'letterbox' | 'camcorder' | 'datestamp' | 'vhs' | 'marks' | 'gate' | 'frame' | 'corners' | 'lace' | 'flowers';
+export type OverlayKind = 'letterbox' | 'camcorder' | 'datestamp' | 'vhs' | 'marks' | 'gate' | 'frame' | 'corners' | 'lace' | 'flowers' | 'deco' | 'pearls';
 
 /** 제목 아래 구분선 가운데 장식 */
 export type Ornament = 'heart' | 'diamond' | 'leaf' | 'star' | 'line' | 'flower' | 'bow' | 'rings' | 'crown' | 'none';
@@ -151,10 +156,12 @@ export const TRANSITIONS: readonly { id: TransitionType; name: string }[] = [
   { id: 'blinds', name: '블라인드' },
   { id: 'blur', name: '몽환 블러' },
   { id: 'light', name: '빛 번짐' },
+  { id: 'shine', name: '빛줄기' },
   { id: 'flare', name: '렌즈 플레어' },
   { id: 'sparkle', name: '반짝임' },
   { id: 'petals', name: '흩날림' },
   { id: 'rise', name: '떠오르기' },
+  { id: 'page', name: '앨범 넘김' },
   { id: 'flash', name: '플래시' },
   { id: 'filmburn', name: '필름 번' },
   { id: 'ink', name: '잉크 번짐' },
@@ -353,6 +360,10 @@ export interface StyleVariant {
   name: string;
   swatch: [string, string];
   patch: ThemePatch;
+  /** 새로 생긴 양식 (양식 카드에 NEW 표시) */
+  isNew?: boolean;
+  /** 예시 영상 장면마다 보여 줄 전환 (없으면 스타일 예시의 전환). 이 양식의 대표 전환을 바로 보여 주려고 */
+  demo?: TransitionType[];
 }
 
 const SCRIPT = 'Great Vibes';
@@ -619,7 +630,7 @@ const ALL_THEMES: Theme[] = [
     name: '클래식',
     label: 'Classic',
     description: '아이보리와 골드, 빛이 번지는 우아하고 격식 있는 연출',
-    highlights: ['골드 타이틀', '빛 번짐 전환', '액자형 배치', '두 장 나란히'],
+    highlights: ['골드 타이틀', '아치 프레임', '빛줄기 · 앨범 넘김', '두 장 나란히'],
     moods: ['elegant'],
     badge: '가장 인기',
     swatch: ['#2b2118', '#e3c98f'],
@@ -634,6 +645,7 @@ const ALL_THEMES: Theme[] = [
     transitions: [
       { type: 'crossfade', weight: 4 },
       { type: 'light', weight: 1.2 },
+      { type: 'shine', weight: 0.8 },
       { type: 'blur', weight: 0.7 },
       { type: 'dip-white', weight: 0.3 },
     ],
@@ -670,6 +682,7 @@ const ALL_THEMES: Theme[] = [
             { type: 'crossfade', weight: 3 },
             { type: 'light', weight: 2 },
             { type: 'flare', weight: 0.8 },
+            { type: 'shine', weight: 0.8 },
             { type: 'blur', weight: 0.6 },
           ],
           effects: { glow: 0.2, sparkles: 16, bokeh: 20 },
@@ -694,6 +707,235 @@ const ALL_THEMES: Theme[] = [
           colors: { accent: '#e2cfa3', bg: '#0c1222', titleDim: 'rgba(8,14,34,0.55)', sceneDim: 'rgba(8,14,34,0.4)' },
           look: { backdropBase: '#101829', backdropWash: 'rgba(10,16,36,0.5)', paper: '#f3efe6', paperAccent: '#27365e', light: '220,210,190' },
           effects: { tint: 'rgba(40,70,140,0.16)', warm: 0, bokehColor: '220,215,200' },
+        },
+      },
+      {
+        // 금빛 아치 안에 이름이 그려지는 오프닝, 사선 빛줄기 전환, 천천히 떨어지는 금박
+        id: 'arch',
+        name: '골드 아치',
+        isNew: true,
+        swatch: ['#2a1f15', '#f0d9a2'],
+        demo: ['shine', 'light', 'crossfade', 'shine'],
+        patch: {
+          titleDesign: 'arch',
+          colors: { accent: '#f0d9a2' },
+          look: { ornament: 'flower', nameJoin: 'amp', light: '255,214,140' },
+          effects: { particle: 'goldleaf', particles: 14, sparkles: 10, glow: 0.14, bokeh: 10 },
+          transitions: [
+            { type: 'crossfade', weight: 3 },
+            { type: 'shine', weight: 1.6 },
+            { type: 'light', weight: 1 },
+            { type: 'blur', weight: 0.5 },
+          ],
+        },
+      },
+      {
+        // 밝고 하얀 예배당: 진주 테두리, 하얀 깃털, 하얀 청첩장 카드, 화이트 페이드
+        id: 'chapel',
+        name: '채플 화이트',
+        isNew: true,
+        swatch: ['#f4efe6', '#c9b38a'],
+        demo: ['dip-white', 'shine', 'crossfade', 'light'],
+        patch: {
+          titleDesign: 'invitation',
+          colors: { text: '#ffffff', accent: '#f7eedb', sub: 'rgba(255,255,255,0.9)', bg: '#211d18', titleDim: 'rgba(54,46,36,0.4)', sceneDim: 'rgba(54,46,36,0.28)', textShadow: 'rgba(58,44,28,0.62)' },
+          look: {
+            backdropBase: '#e9e3d8',
+            backdropWash: 'rgba(255,252,246,0.42)',
+            backdropBlurAlpha: 0.72,
+            gap: '#ffffff',
+            paper: '#ffffff',
+            paperText: '#2f2a24',
+            paperMuted: '#8f857a',
+            paperAccent: '#b0904f',
+            frame: '#ffffff',
+            tape: 'rgba(236,228,212,0.85)',
+            caption: '#7a6a55',
+            light: '255,251,242',
+            frameLine: '#ffffff',
+            ornament: 'rings',
+            nameJoin: 'and',
+            wall: '#f6f3ee',
+            frameWood: '#e6dfd2',
+            mat: '#ffffff',
+            labelInk: '#3a3229',
+          },
+          effects: { vignette: 0.1, warm: 0.03, desaturate: 0.08, fade: 0.05, highlights: 'rgb(255,251,244)', glow: 0.26, bokeh: 8, bokehColor: '255,255,255', sparkles: 12, particle: 'feathers', particles: 8 },
+          overlays: ['pearls'],
+          transitions: [
+            { type: 'crossfade', weight: 3 },
+            { type: 'dip-white', weight: 1.6 },
+            { type: 'shine', weight: 1 },
+            { type: 'light', weight: 1 },
+            { type: 'blur', weight: 0.5 },
+          ],
+        },
+      },
+      {
+        // 촛불이 켜진 저녁 예식: 따뜻한 호박빛, 흔들리는 촛불 빛망울, 금빛 반딧불
+        id: 'candle',
+        name: '캔들라이트',
+        isNew: true,
+        swatch: ['#1d130b', '#ffbf6e'],
+        demo: ['light', 'blur', 'crossfade', 'light'],
+        patch: {
+          colors: { text: '#fff4e2', accent: '#ffd28e', sub: 'rgba(255,240,220,0.86)', bg: '#120b06', titleDim: 'rgba(22,11,2,0.56)', sceneDim: 'rgba(22,11,2,0.42)', textShadow: 'rgba(40,16,0,0.7)' },
+          look: { backdropBase: '#1b120a', backdropWash: 'rgba(36,20,6,0.55)', light: '255,196,120', frameLine: '#ffd28e', ornament: 'star', paperAccent: '#9a6424', caption: '#7a5228' },
+          effects: {
+            vignette: 0.56,
+            warm: 0.2,
+            hue: '#ff9440',
+            hueAmount: 0.18,
+            highlights: 'rgb(255,230,190)',
+            shadows: 'rgb(36,14,0)',
+            contrast: 0.08,
+            glow: 0.22,
+            bokeh: 24,
+            bokehColor: '255,186,100',
+            particle: 'fireflies',
+            particles: 22,
+            particleColors: ['rgba(255,204,120,1)', 'rgba(255,226,160,1)'],
+          },
+          transitions: [
+            { type: 'crossfade', weight: 3 },
+            { type: 'light', weight: 1.5 },
+            { type: 'blur', weight: 1 },
+            { type: 'dip-black', weight: 0.6 },
+          ],
+        },
+      },
+      {
+        // 1920년대 개츠비: 검정과 금빛, 계단처럼 꺾인 기하학 테두리, 대문자 제목, 금박
+        id: 'deco',
+        name: '아르데코',
+        isNew: true,
+        swatch: ['#0d0c0b', '#d8b45a'],
+        demo: ['shine', 'split', 'crossfade', 'shine'],
+        patch: {
+          fonts: { title: CINZEL, titleWeight: 600 },
+          titleStyle: 'caps',
+          colors: { text: '#fbf4e2', accent: '#dcb862', sub: 'rgba(251,244,226,0.84)', bg: '#0a0a09', titleDim: 'rgba(0,0,0,0.58)', sceneDim: 'rgba(0,0,0,0.44)' },
+          look: {
+            backdropBase: '#0e0d0b',
+            backdropWash: 'rgba(8,7,5,0.6)',
+            gap: '#0e0e0d',
+            paper: '#121110',
+            paperText: '#f5ead0',
+            paperMuted: '#a29070',
+            paperAccent: '#d4af37',
+            frame: '#16140f',
+            tape: null,
+            caption: '#e6d6ad',
+            light: '255,226,160',
+            frameLine: '#dcb862',
+            ornament: 'diamond',
+            nameJoin: 'amp',
+            wall: '#1a1814',
+            frameWood: '#b8902f',
+            mat: '#f5efe0',
+            labelInk: '#e9dcbc',
+          },
+          effects: { particle: 'goldleaf', particles: 22, sparkles: 16, glow: 0.12, vignette: 0.52, contrast: 0.1, desaturate: 0.15, warm: 0.04, bokeh: 6, bokehColor: '255,226,160' },
+          overlays: ['deco'],
+          transitions: [
+            { type: 'crossfade', weight: 2.5 },
+            { type: 'shine', weight: 1.6 },
+            { type: 'split', weight: 0.8 },
+            { type: 'dip-black', weight: 0.6 },
+          ],
+        },
+      },
+      {
+        // 오래된 사진첩: 세피아 색감, 필름 그레인, 책장을 넘기는 전환, 빛바랜 종이 청첩장
+        id: 'antique',
+        name: '앤틱 앨범',
+        isNew: true,
+        swatch: ['#2e2216', '#cfae7e'],
+        demo: ['page', 'crossfade', 'page', 'dip-black'],
+        patch: {
+          titleDesign: 'invitation',
+          colors: { text: '#fbf1df', accent: '#ecd6a8', sub: 'rgba(251,241,223,0.86)', bg: '#1a130c', titleDim: 'rgba(26,17,8,0.5)', sceneDim: 'rgba(26,17,8,0.4)' },
+          look: {
+            backdropBase: '#2a1f14',
+            backdropWash: 'rgba(40,28,14,0.5)',
+            gap: '#efe2c8',
+            paper: '#efe2c6',
+            paperText: '#3b2b1a',
+            paperMuted: '#8c7556',
+            paperAccent: '#7f5a2a',
+            frame: '#f4ead6',
+            tape: 'rgba(214,190,150,0.85)',
+            caption: '#6b4e2e',
+            light: '255,222,170',
+            frameLine: '#ecd6a8',
+            ornament: 'leaf',
+            nameJoin: 'amp',
+            wall: '#e9dcc4',
+            frameWood: '#6e4e2c',
+            mat: '#f4ead6',
+            labelInk: '#3b2b1a',
+          },
+          effects: { desaturate: 0.88, hue: '#a8743e', hueAmount: 0.46, fade: 0.06, grain: 0.06, vignette: 0.5, contrast: 0.08, warm: 0, glow: 0.06, bokeh: 0 },
+          overlays: ['frame'],
+          transitions: [
+            { type: 'crossfade', weight: 3 },
+            { type: 'page', weight: 1.6 },
+            { type: 'dip-black', weight: 0.6 },
+            { type: 'blur', weight: 0.4 },
+          ],
+        },
+      },
+      {
+        // 요즘 스튜디오 촬영의 베이지 톤: 부드러운 린넨 색, 레이스, 크림색 꽃잎
+        id: 'beige',
+        name: '베이지 린넨',
+        isNew: true,
+        swatch: ['#e9dcc9', '#a8886a'],
+        demo: ['veil', 'crossfade', 'light', 'blur'],
+        patch: {
+          colors: { text: '#fffaf2', accent: '#f1e2c8', sub: 'rgba(255,250,242,0.88)', bg: '#2a2219', titleDim: 'rgba(60,46,32,0.44)', sceneDim: 'rgba(60,46,32,0.3)', textShadow: 'rgba(64,46,28,0.62)' },
+          look: {
+            backdropBase: '#d9cbb6',
+            backdropWash: 'rgba(242,232,216,0.45)',
+            backdropBlurAlpha: 0.75,
+            gap: '#f6efe4',
+            paper: '#f6efe4',
+            paperText: '#3d3226',
+            paperMuted: '#93816c',
+            paperAccent: '#9a7a58',
+            frame: '#fbf7f0',
+            tape: 'rgba(222,206,180,0.85)',
+            caption: '#7c6650',
+            light: '255,238,214',
+            frameLine: '#f1e2c8',
+            ornament: 'leaf',
+            nameJoin: 'amp',
+            wall: '#efe7dc',
+            frameWood: '#b39a7c',
+            mat: '#fbf7f0',
+            labelInk: '#3d3226',
+          },
+          effects: {
+            vignette: 0.14,
+            warm: 0.1,
+            desaturate: 0.18,
+            fade: 0.07,
+            highlights: 'rgb(255,246,232)',
+            shadows: 'rgb(40,30,20)',
+            glow: 0.14,
+            bokeh: 6,
+            bokehColor: '255,238,214',
+            particle: 'petals',
+            particles: 14,
+            particleColors: ['#f3e6d2', '#e8d6bc', '#fbf3e6'],
+          },
+          overlays: ['lace'],
+          transitions: [
+            { type: 'crossfade', weight: 3 },
+            { type: 'veil', weight: 1.3 },
+            { type: 'light', weight: 1 },
+            { type: 'blur', weight: 0.6 },
+          ],
         },
       },
     ],
@@ -2143,6 +2385,8 @@ export const FRAMES: readonly Choice<FrameId>[] = [
   { id: 'corners', name: '코너 장식' },
   { id: 'lace', name: '레이스' },
   { id: 'flowers', name: '꽃 코너' },
+  { id: 'pearls', name: '진주 테두리' },
+  { id: 'deco', name: '아르데코' },
   { id: 'letterbox', name: '시네마 띠' },
   { id: 'gate', name: '8mm 필름 창' },
   { id: 'camcorder', name: '캠코더 REC' },

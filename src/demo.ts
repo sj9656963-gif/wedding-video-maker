@@ -38,7 +38,7 @@ export const DEMOS: Record<ThemeId, DemoSpec> = {
     scenes: [
       { key: 'cover', photos: ['hills'], transition: 'crossfade', label: '천천히 다가가는 사진 · 연도', year: 2019 },
       { key: 'contain', photos: ['bouquet'], transition: 'light', label: '액자형' },
-      { key: 'collage', photos: ['field', 'city', 'cake'], transition: 'crossfade', label: '콜라주' },
+      { key: 'collage', photos: ['field', 'city', 'cake'], transition: 'shine', label: '콜라주' },
       { key: 'pair', photos: ['field', 'arch'], transition: 'blur', label: '두 장 나란히' },
     ],
   },
@@ -228,7 +228,7 @@ export const DEMO_CAPTIONS: Readonly<Record<string, string>> = {
 };
 const CAPTION_LAYOUTS = new Set<SceneLayout>(['polaroid', 'sticker', 'gallery', 'oval', 'arch']);
 /** '다양하게 섞기'를 골랐을 때 예시에서 차례로 보여 줄 전환 */
-const MIX_DEMO: readonly TransitionType[] = ['slide', 'sparkle', 'split', 'clock', 'veil', 'light', 'mosaic', 'rise', 'iris', 'filmburn'];
+const MIX_DEMO: readonly TransitionType[] = ['slide', 'sparkle', 'split', 'clock', 'veil', 'shine', 'light', 'mosaic', 'page', 'rise', 'iris', 'filmburn'];
 const SPEED_FACTOR = { fast: 0.65, slow: 1.4 } as const;
 
 const INTRO = 4;
@@ -257,7 +257,11 @@ export interface DemoTimeline {
 
 function sceneTransition(theme: Theme, sc: DemoScene, i: number): TransitionType {
   const choice = theme.custom.transition;
-  if (!choice) return sc.transition;
+  if (!choice) {
+    // 양식에 대표 전환이 있으면 그것을 차례로 보여 줌 (예: 앤틱 앨범은 책장 넘김)
+    const own = theme.variants.find((v) => v.id === theme.variantId)?.demo;
+    return own && own.length ? own[i % own.length] : sc.transition;
+  }
   if (choice === 'soft') return 'crossfade';
   if (choice === 'mix') return MIX_DEMO[(i + Math.floor(hash01(theme.id.length * 7) * MIX_DEMO.length)) % MIX_DEMO.length];
   return choice;

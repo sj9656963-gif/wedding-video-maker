@@ -43,7 +43,11 @@ export type TransitionType =
   /** 살포시 떠오르며 나타남 */
   | 'rise'
   /** 시계 방향으로 닦아내기 */
-  | 'clock';
+  | 'clock'
+  /** 금빛 빛줄기가 사선으로 지나가며 다음 장면을 드러냄 */
+  | 'shine'
+  /** 앨범 책장을 넘기듯 오른쪽 절반이 가운데를 축으로 넘어감 */
+  | 'page';
 
 export type MotionType = 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'pan-up' | 'pan-down';
 

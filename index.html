@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>식전영상 메이커 · 사진만 올리면 영화 같은 웨딩 식전영상</title>
-    <meta name="description" content="사진만 올리면 3~5분 웨딩 식전영상을 직접 만들어요. 17가지 스타일과 61가지 양식, 글씨체 74종, 오프닝 15종, 흩날리는 효과 15종, 영화 같은 전환 24종, 실시간 미리보기, Full HD MP4 저장. 제작자 : 부산북구 주양현" />
+    <meta name="description" content="사진만 올리면 3~5분 웨딩 식전영상을 직접 만들어요. 17가지 스타일과 67가지 양식, 글씨체 74종, 오프닝 16종, 흩날리는 효과 16종, 영화 같은 전환 26종, 실시간 미리보기, Full HD MP4 저장. 제작자 : 부산북구 주양현" />
     <meta name="author" content="부산북구 주양현" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f6f2ec" />
@@ -276,8 +276,8 @@
                 <tr><th scope="row">완성까지</th><td>보통 며칠에서 몇 주</td><td class="ours">몇 분 <small>(기기 성능에 따라 달라요)</small></td></tr>
                 <tr><th scope="row">수정</th><td>요청하고 기다리기, 횟수 제한이 있는 경우가 많아요</td><td class="ours">무제한 · 바로 반영</td></tr>
                 <tr><th scope="row">미리보기</th><td>시안이나 완성본을 받아야 확인</td><td class="ours">만드는 동안 실시간으로</td></tr>
-                <tr><th scope="row">스타일</th><td>업체가 준비한 시안 중에서 선택</td><td class="ours" id="cmp-styles">17가지 스타일 · 61가지 양식 · 오프닝 15종</td></tr>
-                <tr><th scope="row">꾸미기</th><td>수정 요청으로만 바꿀 수 있어요</td><td class="ours" id="cmp-custom">글씨체 74종 · 색감 필터 14종 · 효과 15종 직접 선택</td></tr>
+                <tr><th scope="row">스타일</th><td>업체가 준비한 시안 중에서 선택</td><td class="ours" id="cmp-styles">17가지 스타일 · 67가지 양식 · 오프닝 16종</td></tr>
+                <tr><th scope="row">꾸미기</th><td>수정 요청으로만 바꿀 수 있어요</td><td class="ours" id="cmp-custom">글씨체 74종 · 색감 필터 14종 · 효과 16종 직접 선택</td></tr>
                 <tr><th scope="row">음악</th><td>업체 선곡 또는 요청</td><td class="ours">기본 피아노 음악 또는 원하는 곡</td></tr>
                 <tr><th scope="row">결과물</th><td>업체마다 다름</td><td class="ours">Full HD 1080p MP4</td></tr>
               </tbody>
@@ -331,11 +331,11 @@
           </ol>
           <dl class="numbers" id="numbers">
             <div data-reveal style="--i: 0"><dt>스타일</dt><dd><span data-count="styles">17</span></dd></div>
-            <div data-reveal style="--i: 1"><dt>양식</dt><dd><span data-count="variants">61</span></dd></div>
+            <div data-reveal style="--i: 1"><dt>양식</dt><dd><span data-count="variants">67</span></dd></div>
             <div data-reveal style="--i: 2"><dt>글씨체</dt><dd><span data-count="fonts">74</span></dd></div>
-            <div data-reveal style="--i: 3"><dt>오프닝 디자인</dt><dd><span data-count="titles">15</span></dd></div>
-            <div data-reveal style="--i: 4"><dt>전환 효과</dt><dd><span data-count="transitions">24</span></dd></div>
-            <div data-reveal style="--i: 5"><dt>흩날리는 효과</dt><dd><span data-count="particles">15</span></dd></div>
+            <div data-reveal style="--i: 3"><dt>오프닝 디자인</dt><dd><span data-count="titles">16</span></dd></div>
+            <div data-reveal style="--i: 4"><dt>전환 효과</dt><dd><span data-count="transitions">26</span></dd></div>
+            <div data-reveal style="--i: 5"><dt>흩날리는 효과</dt><dd><span data-count="particles">16</span></dd></div>
             <div data-reveal style="--i: 6"><dt>색감 필터</dt><dd><span data-count="filters">14</span></dd></div>
             <div data-reveal style="--i: 7"><dt>장면 배치</dt><dd><span data-count="layouts">13</span></dd></div>
           </dl>
@@ -398,49 +398,61 @@
               <!-- 휴대폰: 스타일·꾸미기·문구를 고르는 동안 위쪽에 붙어 있는 미리보기 자리 -->
               <div class="live-mobile" id="live-mobile"></div>
 
-              <!-- 2. 스타일 -->
+              <!-- 2. 스타일 고르고 꾸미기: 카드를 누르면 그 카드가 있는 줄 바로 아래에 양식·꾸미기가 열림 -->
               <section class="card" aria-labelledby="h-style" id="style-card">
-                <h2 id="h-style"><span class="num" aria-hidden="true">2</span>스타일 · 양식</h2>
-                <p class="section-lead"><span class="only-wide">고르는 즉시 오른쪽 미리보기가 바뀌어요.</span><span class="only-narrow">고르는 즉시 위쪽 미리보기가 바뀌어요.</span> 분위기로 거르고, 스타일과 양식을 골라 보세요.</p>
+                <h2 id="h-style"><span class="num" aria-hidden="true">2</span>스타일 고르고 꾸미기</h2>
+                <p class="section-lead">카드를 누르면 <b>바로 아래에 양식과 꾸미기</b>가 열려요. <span class="only-wide">고르는 즉시 오른쪽 미리보기가 바뀌어요.</span><span class="only-narrow">고르는 즉시 위쪽 미리보기가 바뀌어요.</span></p>
                 <div id="mood-filter" class="chip-group mood-filter" role="group" aria-label="분위기로 거르기"></div>
-                <div id="theme-list" class="theme-list" role="radiogroup" aria-label="영상 스타일"></div>
-                <div class="opt-block">
-                  <h3 class="opt-h">양식 <small id="variant-help"></small></h3>
-                  <div id="variant-list" class="variant-list" role="radiogroup" aria-label="양식"></div>
-                </div>
+                <div id="theme-list" class="theme-list" role="group" aria-label="영상 스타일"></div>
+
+                <!-- 고른 스타일의 세부 설정 (style-picker.ts가 고른 카드의 줄 바로 아래로 옮겨 엶) -->
+                <section class="style-detail" id="style-detail" aria-labelledby="sd-title" hidden>
+                  <div class="sd-head">
+                    <h3 class="sd-title" id="sd-title"><span id="sd-name"></span><span class="sd-sub"> 세부 설정</span></h3>
+                    <div class="sd-nav" role="group" aria-label="다른 스타일로 바꾸기">
+                      <button type="button" class="btn subtle small" id="sd-prev" aria-label="이전 스타일"><span aria-hidden="true">‹ </span>이전<span class="sd-long"> 스타일</span></button>
+                      <button type="button" class="btn subtle small" id="sd-next" aria-label="다음 스타일">다음<span class="sd-long"> 스타일</span><span aria-hidden="true"> ›</span></button>
+                      <button type="button" class="btn subtle small" id="sd-close" aria-label="세부 설정 접기">접기<span aria-hidden="true"> ▴</span></button>
+                    </div>
+                  </div>
+                  <div class="sd-block sd-variants">
+                    <h4 class="sd-h">양식 <small id="variant-help"></small></h4>
+                    <div id="variant-list" class="variant-list" role="radiogroup" aria-label="양식"></div>
+                  </div>
+                  <div class="sd-block sd-custom" id="custom-card">
+                    <div class="card-head">
+                      <h4 class="sd-h" id="h-custom">꾸미기 <small>오프닝 디자인 · 글씨체 · 색감 · 효과 · 전환<span class="only-pointer"> · 마우스를 올리면 먼저 보여 줘요</span></small></h4>
+                      <div class="cz-state">
+                        <span id="cz-count" class="cz-count" aria-live="polite"></span>
+                        <button type="button" id="cz-reset" class="btn subtle small" hidden>모두 스타일 기본으로</button>
+                      </div>
+                    </div>
+                    <div class="cz-tabs" id="cz-tabs" role="tablist" aria-label="꾸미기 항목">
+                      <button type="button" role="tab" id="czt-opening" data-panel="opening" aria-controls="czp-opening" aria-selected="true">오프닝</button>
+                      <button type="button" role="tab" id="czt-font" data-panel="font" aria-controls="czp-font" aria-selected="false" tabindex="-1">글씨체</button>
+                      <button type="button" role="tab" id="czt-color" data-panel="color" aria-controls="czp-color" aria-selected="false" tabindex="-1">색감</button>
+                      <button type="button" role="tab" id="czt-effect" data-panel="effect" aria-controls="czp-effect" aria-selected="false" tabindex="-1">효과</button>
+                      <button type="button" role="tab" id="czt-motion" data-panel="motion" aria-controls="czp-motion" aria-selected="false" tabindex="-1">전환 · 연출</button>
+                    </div>
+                    <div class="cz-panel" id="czp-opening" role="tabpanel" aria-labelledby="czt-opening"></div>
+                    <div class="cz-panel" id="czp-font" role="tabpanel" aria-labelledby="czt-font" hidden></div>
+                    <div class="cz-panel" id="czp-color" role="tabpanel" aria-labelledby="czt-color" hidden></div>
+                    <div class="cz-panel" id="czp-effect" role="tabpanel" aria-labelledby="czt-effect" hidden></div>
+                    <div class="cz-panel" id="czp-motion" role="tabpanel" aria-labelledby="czt-motion" hidden>
+                      <div class="cz-foot">
+                        <label class="check"><input type="checkbox" id="f-group" checked /> 여러 장을 한 화면에 모아 보여주기 (폴라로이드 · 콜라주 · 스티커 · 전시 액자 등)</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="sd-foot">
+                    <button type="button" class="btn subtle small" id="sd-done">다 골랐어요 · 접기<span aria-hidden="true"> ▴</span></button>
+                  </div>
+                </section>
               </section>
 
-              <!-- 3. 꾸미기 -->
-              <section class="card" aria-labelledby="h-custom" id="custom-card">
-                <div class="card-head">
-                  <h2 id="h-custom"><span class="num" aria-hidden="true">3</span>꾸미기</h2>
-                  <div class="cz-state">
-                    <span id="cz-count" class="cz-count" aria-live="polite"></span>
-                    <button type="button" id="cz-reset" class="btn subtle small" hidden>모두 스타일 기본으로</button>
-                  </div>
-                </div>
-                <p class="section-lead">오프닝 디자인, 글씨체, 색감, 효과, 전환을 직접 골라 보세요. 누르면 바로 미리보기에 적용돼요.<span class="only-pointer"> 마우스를 올려 두면 적용하기 전에 먼저 보여 줘요.</span></p>
-                <div class="cz-tabs" id="cz-tabs" role="tablist" aria-label="꾸미기 항목">
-                  <button type="button" role="tab" id="czt-opening" data-panel="opening" aria-controls="czp-opening" aria-selected="true">오프닝</button>
-                  <button type="button" role="tab" id="czt-font" data-panel="font" aria-controls="czp-font" aria-selected="false" tabindex="-1">글씨체</button>
-                  <button type="button" role="tab" id="czt-color" data-panel="color" aria-controls="czp-color" aria-selected="false" tabindex="-1">색감</button>
-                  <button type="button" role="tab" id="czt-effect" data-panel="effect" aria-controls="czp-effect" aria-selected="false" tabindex="-1">효과</button>
-                  <button type="button" role="tab" id="czt-motion" data-panel="motion" aria-controls="czp-motion" aria-selected="false" tabindex="-1">전환 · 연출</button>
-                </div>
-                <div class="cz-panel" id="czp-opening" role="tabpanel" aria-labelledby="czt-opening"></div>
-                <div class="cz-panel" id="czp-font" role="tabpanel" aria-labelledby="czt-font" hidden></div>
-                <div class="cz-panel" id="czp-color" role="tabpanel" aria-labelledby="czt-color" hidden></div>
-                <div class="cz-panel" id="czp-effect" role="tabpanel" aria-labelledby="czt-effect" hidden></div>
-                <div class="cz-panel" id="czp-motion" role="tabpanel" aria-labelledby="czt-motion" hidden>
-                  <div class="cz-foot">
-                    <label class="check"><input type="checkbox" id="f-group" checked /> 여러 장을 한 화면에 모아 보여주기 (폴라로이드 · 콜라주 · 스티커 · 전시 액자 등)</label>
-                  </div>
-                </div>
-              </section>
-
-              <!-- 4. 문구 -->
+              <!-- 3. 문구 -->
               <section class="card" aria-labelledby="h-text" id="text-card">
-                <h2 id="h-text"><span class="num" aria-hidden="true">4</span>문구 입력</h2>
+                <h2 id="h-text"><span class="num" aria-hidden="true">3</span>문구 입력</h2>
                 <p class="section-lead">떠오르는 문구가 없으면 칸 아래 <b>예시</b>를 눌러 보세요. 바로 들어가고, 입력하는 대로 미리보기에 나와요.</p>
                 <div class="form-grid">
                   <label>신랑 이름<input id="f-groom" type="text" maxlength="20" autocomplete="off" placeholder="예: 김민준" /></label>
@@ -479,7 +491,7 @@
 
             <!-- 5. 음악 -->
             <section class="card" aria-labelledby="h-music">
-              <h2 id="h-music"><span class="num" aria-hidden="true">5</span>배경음악</h2>
+              <h2 id="h-music"><span class="num" aria-hidden="true">4</span>배경음악</h2>
               <div class="radio-row" role="radiogroup" aria-label="배경음악 선택">
                 <label class="radio-card">
                   <input type="radio" name="music" value="default" checked />
@@ -501,7 +513,7 @@
 
             <!-- 6. 길이 -->
             <section class="card" aria-labelledby="h-length">
-              <h2 id="h-length"><span class="num" aria-hidden="true">6</span>영상 길이</h2>
+              <h2 id="h-length"><span class="num" aria-hidden="true">5</span>영상 길이</h2>
               <div id="duration-options" class="chip-group wrap-chips" role="group" aria-label="영상 길이"></div>
               <p id="timeline-summary" class="summary" aria-live="polite"></p>
               <div id="timeline-error" class="error" role="alert" hidden></div>
@@ -561,7 +573,7 @@
               </div>
 
               <div class="export">
-                <h2 id="h-export"><span class="num" aria-hidden="true">7</span>영상 만들기</h2>
+                <h2 id="h-export"><span class="num" aria-hidden="true">6</span>영상 만들기</h2>
                 <label class="inline"><span>화질</span>
                   <select id="f-quality">
                     <option value="1080p">Full HD 1080p (권장)</option>
@@ -614,7 +626,7 @@
             </details>
             <details>
               <summary>글씨체나 색, 효과를 직접 바꿀 수 있나요?</summary>
-              <div class="ans"><p>네. '꾸미기'에서 오프닝 디자인, 영문·한글 글씨체, 색감 필터, 포인트 색, 흩날리는 효과, 화면 테두리, 전환 효과와 속도를 직접 고를 수 있어요. 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동해 바로 보여 주고, 언제든 '모두 스타일 기본으로'를 눌러 되돌릴 수 있어요.</p></div>
+              <div class="ans"><p>네. 스타일 카드를 누르면 바로 아래에 양식과 '꾸미기'가 열려요. 오프닝 디자인, 영문·한글 글씨체, 색감 필터, 포인트 색, 흩날리는 효과, 화면 테두리, 전환 효과와 속도를 직접 고를 수 있고, 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동해 바로 보여 줘요. 마음에 안 들면 '이전 스타일 · 다음 스타일'로 바로 바꿔 볼 수 있고, 언제든 '모두 스타일 기본으로'를 눌러 되돌릴 수 있어요.</p></div>
             </details>
             <details>
               <summary>배경음악은 어떻게 넣나요?</summary>

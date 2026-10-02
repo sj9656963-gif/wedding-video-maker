@@ -648,6 +648,110 @@ export class Renderer {
         }
         break;
       }
+      case 'shine': {
+        // 금빛 빛줄기가 사선으로 화면을 가로지르고, 빛이 지나간 자리에 다음 장면이 드러남
+        const e = easeInOutSine(p);
+        drawSegmentVisual(env, prev, t);
+        const l = this.renderToLayer(0, env, cur, t);
+        const ang = (28 * Math.PI) / 180;
+        const dx = Math.cos(ang) * tr.direction;
+        const dy = Math.sin(ang);
+        const f = 110;
+        const proj = [0, W].flatMap((x) => [0, H].map((y) => x * dx + y * dy));
+        const c = lerp(Math.min(...proj) - f * 2, Math.max(...proj) + f * 2, e);
+        const lc = l.ctx;
+        lc.save();
+        lc.globalCompositeOperation = 'destination-in';
+        const g = lc.createLinearGradient(dx * (c - f), dy * (c - f), dx * (c + f), dy * (c + f));
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        lc.fillStyle = g;
+        lc.fillRect(0, 0, W, H);
+        lc.restore();
+        this.drawLayer(env, l, 1);
+        const glow = Math.sin(Math.PI * p);
+        if (glow > 0.01) {
+          // 경계를 따라 가운데가 가늘고 밝은 빛 띠 (가운데 색은 스타일의 빛 색을 흰색 쪽으로 조금 밝힌 것: 클래식은 금빛)
+          const rgb = env.theme.look.light;
+          const core = rgb
+            .split(',')
+            .map((v) => Math.round(Number(v) + (255 - Number(v)) * 0.35))
+            .join(',');
+          const bw = 240;
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          const band = ctx.createLinearGradient(dx * (c - bw), dy * (c - bw), dx * (c + bw), dy * (c + bw));
+          band.addColorStop(0, `rgba(${rgb},0)`);
+          band.addColorStop(0.36, `rgba(${rgb},${(0.32 * glow).toFixed(4)})`);
+          band.addColorStop(0.5, `rgba(${core},${(0.92 * glow).toFixed(4)})`);
+          band.addColorStop(0.64, `rgba(${rgb},${(0.32 * glow).toFixed(4)})`);
+          band.addColorStop(1, `rgba(${rgb},0)`);
+          ctx.fillStyle = band;
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = `rgba(${rgb},${(0.08 * glow).toFixed(4)})`;
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
+        break;
+      }
+      case 'page': {
+        // 앨범 책장을 넘기듯: 이전 장면의 오른쪽 절반이 가운데를 축으로 넘어가고,
+        // 그 뒷면(다음 장면의 왼쪽 절반)이 왼쪽에 내려앉음. 들린 책장은 바깥쪽이 조금 커 보이게(원근)
+        const e = easeInOutCubic(p);
+        const a = this.renderToLayer(0, env, prev, t);
+        const b = this.renderToLayer(1, env, cur, t);
+        const cw = a.canvas.width;
+        const ch = a.canvas.height;
+        const half = W / 2;
+        ctx.drawImage(a.canvas, 0, 0, cw / 2, ch, 0, 0, half, H);
+        ctx.drawImage(b.canvas, cw / 2, 0, cw / 2, ch, half, 0, half, H);
+        const th = Math.PI * e;
+        const cos = Math.cos(th);
+        const lift = Math.sin(th);
+        const w = half * Math.abs(cos);
+        const side = cos >= 0 ? 1 : -1;
+        const edge = half + side * w;
+        if (lift > 0.01) {
+          // 들린 책장이 바탕에 드리우는 그림자
+          const sw = 40 + 130 * lift;
+          const sh = ctx.createLinearGradient(edge, 0, edge + side * sw, 0);
+          sh.addColorStop(0, `rgba(0,0,0,${(0.42 * lift).toFixed(4)})`);
+          sh.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = sh;
+          ctx.fillRect(side === 1 ? edge : edge - sw, 0, sw, H);
+        }
+        if (w > 0.5) {
+          const src = side === 1 ? a : b;
+          const N = 24;
+          for (let i = 0; i < N; i++) {
+            const u0 = i / N;
+            const u1 = (i + 1) / N;
+            const sx = side === 1 ? cw / 2 + u0 * (cw / 2) : cw / 2 - u1 * (cw / 2);
+            const x0 = side === 1 ? half + u0 * w : half - u1 * w;
+            const grow = 1 + 0.07 * lift * (u0 + u1) * 0.5;
+            ctx.drawImage(src.canvas, sx, 0, cw / 2 / N, ch, x0, (H - H * grow) / 2, w / N + 0.75, H * grow);
+          }
+          // 세워질수록 빛을 덜 받아 어둡고, 바깥 끝은 살짝 밝게
+          const dark = 0.5 * (1 - Math.abs(cos));
+          const shade = ctx.createLinearGradient(half, 0, edge, 0);
+          shade.addColorStop(0, `rgba(0,0,0,${(dark + 0.12 * lift).toFixed(4)})`);
+          shade.addColorStop(0.7, `rgba(0,0,0,${(dark * 0.7).toFixed(4)})`);
+          shade.addColorStop(1, `rgba(255,255,255,${(0.1 * lift).toFixed(4)})`);
+          ctx.fillStyle = shade;
+          ctx.fillRect(Math.min(half, edge), -H * 0.05, w, H * 1.1);
+        }
+        if (lift > 0.01) {
+          // 가운데 접히는 곳
+          const gw = 28;
+          const gut = ctx.createLinearGradient(half - gw, 0, half + gw, 0);
+          gut.addColorStop(0, 'rgba(0,0,0,0)');
+          gut.addColorStop(0.5, `rgba(0,0,0,${(0.3 * lift).toFixed(4)})`);
+          gut.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gut;
+          ctx.fillRect(half - gw, 0, gw * 2, H);
+        }
+        break;
+      }
     }
   }
 

@@ -20,6 +20,12 @@ import type { PhotoSegment, Segment, TitleSegment, TransitionType } from './type
 export type { SceneEnv } from './draw-utils';
 
 type MotionSt = ReturnType<typeof motionState>;
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** 들어오는 장면을 선명한 채로 공간적으로 드러내는 전환 */
 const REVEAL_TRANSITIONS: ReadonlySet<TransitionType> = new Set<TransitionType>([
@@ -36,6 +42,8 @@ const REVEAL_TRANSITIONS: ReadonlySet<TransitionType> = new Set<TransitionType>(
   'split',
   'mosaic',
   'clock',
+  'shine',
+  'page',
 ]);
 
 /** 그림자와 (테마에 따라) 흰 테두리가 있는 사진 카드 */
@@ -122,11 +130,12 @@ function drawCardCaption(env: SceneEnv, text: string, cx: number, y: number, max
   ctx.restore();
 }
 
-function drawContain(env: SceneEnv, seg: PhotoSegment, st: MotionSt, time: SceneTime): void {
+/** 흐린 배경 위 액자 한 장. 그린 사진 카드의 자리(테두리 포함)를 돌려줌 (연도 표시가 테두리에 걸치지 않게) */
+function drawContain(env: SceneEnv, seg: PhotoSegment, st: MotionSt, time: SceneTime): Box | null {
   const id = seg.photoIds[0];
   const img = env.assets.image(id);
   drawBlurBackground(env, id, st);
-  if (!img) return;
+  if (!img) return null;
   const ins = overlayInsets(env.theme);
   const cap = captionOf(env, id);
   const b = env.theme.photoBorder;
@@ -144,6 +153,7 @@ function drawContain(env: SceneEnv, seg: PhotoSegment, st: MotionSt, time: Scene
   const cy = top + (band - capSpace) / 2;
   drawCard(env, img, W / 2, cy, w, h);
   if (cap) drawCardCaption(env, cap, W / 2, cy + h / 2 + b + 60, W * 0.8, time);
+  return { x: W / 2 - w / 2 - b, y: cy - h / 2 - b, w: w + b * 2, h: h + b * 2 };
 }
 
 function drawPair(env: SceneEnv, seg: PhotoSegment, st: MotionSt, p: number, time: SceneTime): void {
@@ -221,6 +231,7 @@ export function drawSegmentVisual(env: SceneEnv, seg: Segment, t: number): void 
     tin: seg.transitionIn?.duration ?? 0,
     reveal: seg.transitionIn ? REVEAL_TRANSITIONS.has(seg.transitionIn.type) : false,
   };
+  let card: Box | null = null;
   switch (seg.layout) {
     case 'cover': {
       const id = seg.photoIds[0];
@@ -231,7 +242,7 @@ export function drawSegmentVisual(env: SceneEnv, seg: Segment, t: number): void 
       break;
     }
     case 'contain':
-      drawContain(env, seg, st, time);
+      card = drawContain(env, seg, st, time);
       break;
     case 'pair':
       drawPair(env, seg, st, p, time);
@@ -268,5 +279,5 @@ export function drawSegmentVisual(env: SceneEnv, seg: Segment, t: number): void 
       break;
   }
   // 매거진은 글 영역에, 포스터는 큰 글자로 연도를 보여주므로 따로 표시하지 않음
-  if (seg.year !== undefined && seg.layout !== 'magazine' && seg.layout !== 'poster') drawYearChapter(env, seg.year, time);
+  if (seg.year !== undefined && seg.layout !== 'magazine' && seg.layout !== 'poster') drawYearChapter(env, seg.year, time, card);
 }

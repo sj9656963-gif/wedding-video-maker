@@ -32,7 +32,7 @@ export function overlayInsets(theme: Theme): OverlayInsets {
   // 캠코더 카운터·날짜(아래쪽 976 부근)와 디카 날짜 스탬프(990 부근) 위로
   if (o.includes('camcorder') || o.includes('datestamp')) textBottom = Math.max(textBottom, 150);
   if (o.includes('gate')) textBottom = Math.max(textBottom, 40);
-  if (o.includes('lace')) textBottom = Math.max(textBottom, 50);
+  if (o.includes('lace') || o.includes('pearls') || o.includes('deco')) textBottom = Math.max(textBottom, 50);
   // 캠코더 날짜·시각 두 줄의 윗부분(887 부근), 디카 날짜 스탬프 윗부분(930 부근)보다 위
   let hud = 0;
   if (o.includes('camcorder')) hud = 210;
@@ -468,6 +468,227 @@ function flowerCorners(env: OverlayEnv, t: number): void {
   ctx.restore();
 }
 
+/**
+ * 아르데코: 바깥 한 줄 + 모서리마다 계단처럼 두 번 꺾여 들어가는 안쪽 줄,
+ * 모서리의 부채꼴 빛살, 위·아래 가운데의 마름모 장식 (1920년대 개츠비 느낌)
+ */
+function decoFrame(env: OverlayEnv, t: number): void {
+  const { ctx, theme, k } = env;
+  const a = easeInOutSine(clamp01((t - 0.3) / 1.6));
+  if (a <= 0) return;
+  const color = theme.colors.accent;
+  ctx.save();
+  ctx.globalAlpha = 0.9 * a;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineJoin = 'miter';
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 5 * k;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(30, 30, W - 60, H - 60);
+  // 안쪽 계단 테두리
+  const m = 44;
+  const d = 15;
+  ctx.lineWidth = 1.7;
+  ctx.beginPath();
+  ctx.moveTo(m, m + 2 * d);
+  ctx.lineTo(m + d, m + 2 * d);
+  ctx.lineTo(m + d, m + d);
+  ctx.lineTo(m + 2 * d, m + d);
+  ctx.lineTo(m + 2 * d, m);
+  ctx.lineTo(W - m - 2 * d, m);
+  ctx.lineTo(W - m - 2 * d, m + d);
+  ctx.lineTo(W - m - d, m + d);
+  ctx.lineTo(W - m - d, m + 2 * d);
+  ctx.lineTo(W - m, m + 2 * d);
+  ctx.lineTo(W - m, H - m - 2 * d);
+  ctx.lineTo(W - m - d, H - m - 2 * d);
+  ctx.lineTo(W - m - d, H - m - d);
+  ctx.lineTo(W - m - 2 * d, H - m - d);
+  ctx.lineTo(W - m - 2 * d, H - m);
+  ctx.lineTo(m + 2 * d, H - m);
+  ctx.lineTo(m + 2 * d, H - m - d);
+  ctx.lineTo(m + d, H - m - d);
+  ctx.lineTo(m + d, H - m - 2 * d);
+  ctx.lineTo(m, H - m - 2 * d);
+  ctx.closePath();
+  ctx.stroke();
+  // 모서리 부채꼴 빛살 (화면 안쪽으로 퍼짐)
+  const L = 70 + 30 * a;
+  for (const [x, y, sx, sy] of [
+    [m + 2 * d, m + 2 * d, 1, 1],
+    [W - m - 2 * d, m + 2 * d, -1, 1],
+    [m + 2 * d, H - m - 2 * d, 1, -1],
+    [W - m - 2 * d, H - m - 2 * d, -1, -1],
+  ]) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(sx, sy);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i <= 6; i++) {
+      const ang = (i / 6) * (Math.PI / 2);
+      const len = i % 2 === 0 ? L : L * 0.62;
+      ctx.moveTo(Math.cos(ang) * 10, Math.sin(ang) * 10);
+      ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 26, 0, Math.PI / 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  // 위·아래 가운데: 가로줄 사이 마름모
+  for (const y of [m, H - m]) {
+    ctx.save();
+    ctx.translate(W / 2, y);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (const s of [-1, 1]) {
+      ctx.moveTo(s * 20, -5);
+      ctx.lineTo(s * 74, -5);
+      ctx.moveTo(s * 20, 5);
+      ctx.lineTo(s * 54, 5);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -13);
+    ctx.lineTo(13, 0);
+    ctx.lineTo(0, 13);
+    ctx.lineTo(-13, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/** 진주 한 알 (광택 있는 흰 구슬) */
+function pearlSprite(): HTMLCanvasElement {
+  const s = 64;
+  const c = createCanvas(s, s);
+  const g = get2d(c, false);
+  const r = s / 2 - 2;
+  const body = g.createRadialGradient(s * 0.38, s * 0.34, r * 0.08, s / 2, s / 2, r);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(0.35, '#f7f2ea');
+  body.addColorStop(0.75, '#ddd3c6');
+  body.addColorStop(1, '#b9ad9e');
+  g.fillStyle = body;
+  g.beginPath();
+  g.arc(s / 2, s / 2, r, 0, TAU);
+  g.fill();
+  // 은은한 무지갯빛 (분홍·하늘)
+  const iri = g.createLinearGradient(0, s, s, 0);
+  iri.addColorStop(0, 'rgba(255,190,210,0.18)');
+  iri.addColorStop(0.5, 'rgba(255,255,255,0)');
+  iri.addColorStop(1, 'rgba(180,215,255,0.16)');
+  g.fillStyle = iri;
+  g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.beginPath();
+  g.ellipse(s * 0.36, s * 0.3, r * 0.22, r * 0.14, -0.6, 0, TAU);
+  g.fill();
+  return c;
+}
+
+const pearlCache = new Map<string, HTMLCanvasElement>();
+
+/** 진주 테두리를 화면 크기에 맞춰 한 번만 그려 둠 (매 프레임에는 그림 한 장만 얹음) */
+function pearlLayer(k: number): HTMLCanvasElement {
+  const cw = Math.round(W * k);
+  const ch = Math.round(H * k);
+  const key = `${cw}x${ch}`;
+  const hit = pearlCache.get(key);
+  if (hit) return hit;
+  const c = createCanvas(cw, ch);
+  const g = get2d(c, false);
+  g.setTransform(k, 0, 0, k, 0, 0);
+  const pearl = pearlSprite();
+  g.shadowColor = 'rgba(0,0,0,0.38)';
+  g.shadowBlur = 5 * k;
+  g.shadowOffsetY = 2 * k;
+  const inset = 34;
+  const put = (x: number, y: number, r: number) => g.drawImage(pearl, x - r, y - r, r * 2, r * 2);
+  // 네 변을 따라 같은 간격으로, 모서리는 큰 알
+  const step = 22;
+  const x0 = inset;
+  const x1 = W - inset;
+  const y0 = inset;
+  const y1 = H - inset;
+  for (const [ax, ay, bx, by] of [
+    [x0, y0, x1, y0],
+    [x1, y0, x1, y1],
+    [x1, y1, x0, y1],
+    [x0, y1, x0, y0],
+  ]) {
+    const len = Math.hypot(bx - ax, by - ay);
+    const n = Math.round(len / step);
+    for (let i = 1; i < n; i++) {
+      const f = i / n;
+      put(ax + (bx - ax) * f, ay + (by - ay) * f, i % 2 ? 7.4 : 6.2);
+    }
+  }
+  for (const [x, y] of [
+    [x0, y0],
+    [x1, y0],
+    [x0, y1],
+    [x1, y1],
+  ]) {
+    put(x, y, 12.5);
+    // 모서리의 작은 진주 송이
+    const sx = x === x0 ? 1 : -1;
+    const sy = y === y0 ? 1 : -1;
+    put(x + sx * 24, y + sy * 24, 8);
+    put(x + sx * 38, y + sy * 13, 5.4);
+    put(x + sx * 13, y + sy * 38, 5.4);
+  }
+  // 위 가운데 살짝 늘어진 진주 한 줄 (사진 윗부분에 닿지 않을 만큼만)
+  for (let i = 0; i <= 12; i++) {
+    const f = i / 12;
+    const x = W / 2 - 160 + 320 * f;
+    const y = y0 + Math.sin(Math.PI * f) * 16;
+    put(x, y, i === 6 ? 9 : 6.2);
+  }
+  if (pearlCache.size >= 6) pearlCache.delete(pearlCache.keys().next().value!);
+  pearlCache.set(key, c);
+  return c;
+}
+
+/** 진주 테두리: 네 변을 두른 진주 줄, 모서리 송이, 위 가운데 늘어진 줄. 빛 한 점이 진주를 따라 돎 */
+function pearlBorder(env: OverlayEnv, t: number): void {
+  const { ctx, k } = env;
+  const a = easeInOutSine(clamp01((t - 0.2) / 1.5));
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.drawImage(pearlLayer(k), 0, 0, W, H);
+  // 테두리를 따라 도는 반짝임 두 점
+  const inset = 34;
+  const per = 2 * (W + H - 4 * inset);
+  ctx.globalCompositeOperation = 'screen';
+  for (const off of [0, 0.5]) {
+    let s = (((t * 160) / per + off) % 1) * per;
+    let x: number;
+    let y: number;
+    const w = W - 2 * inset;
+    const hh = H - 2 * inset;
+    if (s < w) [x, y] = [inset + s, inset];
+    else if ((s -= w) < hh) [x, y] = [W - inset, inset + s];
+    else if ((s -= hh) < w) [x, y] = [W - inset - s, H - inset];
+    else [x, y] = [inset, H - inset - (s - w)];
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 22);
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 22, y - 22, 44, 44);
+  }
+  ctx.restore();
+}
+
 /** seg = 지금 화면의 중심 구간 (전환 중이면 더 많이 보이는 쪽) */
 export function drawOverlays(env: OverlayEnv, t: number, seg: Segment): void {
   for (const o of env.theme.overlays) {
@@ -492,6 +713,12 @@ export function drawOverlays(env: OverlayEnv, t: number, seg: Segment): void {
         break;
       case 'flowers':
         flowerCorners(env, t);
+        break;
+      case 'deco':
+        decoFrame(env, t);
+        break;
+      case 'pearls':
+        pearlBorder(env, t);
         break;
     }
   }

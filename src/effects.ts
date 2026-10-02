@@ -372,16 +372,31 @@ function makeBalloon(color: string): HTMLCanvasElement {
   });
 }
 
-/** 반딧불: 가운데가 밝은 연두·노랑 빛 (밝은 화면에서도 색으로 보이게 가운데를 진하게) */
+/** 'rgba(r,g,b,a)'·'#rrggbb' → [r,g,b] */
+function rgbOf(color: string): [number, number, number] | null {
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(color);
+  if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
+  const hx = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!hx) return null;
+  const n = parseInt(hx[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const FIREFLY_DEFAULT = 'rgba(236,250,96,1)';
+
+/** 반딧불: 가운데가 밝은 연두·노랑 빛 (밝은 화면에서도 색으로 보이게 가운데를 진하게). 다른 색이면 빛무리도 그 색으로 */
 function makeFirefly(color: string): HTMLCanvasElement {
+  const rgb = color === FIREFLY_DEFAULT ? null : rgbOf(color);
+  const halo = rgb ? rgb.map((v) => Math.round(v * 0.88)).join(',') : '206,238,70';
+  const outer = rgb ? rgb.join(',') : '210,240,110';
   return sprite(48, (g, s) => {
     const h = s / 2;
     const grad = g.createRadialGradient(h, h, 0, h, h, h);
     grad.addColorStop(0, 'rgba(255,255,225,1)');
     grad.addColorStop(0.14, color);
-    grad.addColorStop(0.3, 'rgba(206,238,70,0.55)');
-    grad.addColorStop(0.62, 'rgba(210,240,110,0.14)');
-    grad.addColorStop(1, 'rgba(210,240,110,0)');
+    grad.addColorStop(0.3, `rgba(${halo},0.55)`);
+    grad.addColorStop(0.62, `rgba(${outer},0.14)`);
+    grad.addColorStop(1, `rgba(${outer},0)`);
     g.fillStyle = grad;
     g.fillRect(0, 0, s, s);
   });
@@ -429,6 +444,57 @@ function makeNote(color: string, double: boolean): HTMLCanvasElement {
     g.lineJoin = 'round';
     paint('rgba(80,55,45,0.35)', 3);
     paint(color, 0);
+  });
+}
+
+/**
+ * 금박 조각: 구겨진 듯 모서리가 불규칙한 얇은 금속 조각.
+ * 앞면은 사선으로 밝게 빛나고 뒷면은 어두워서, 돌며 떨어질 때 번쩍이며 반짝임
+ */
+function makeGoldLeaf(color: string, seed: number, back: boolean): HTMLCanvasElement {
+  return sprite(64, (g, s) => {
+    const c = s / 2;
+    const n = 7;
+    const flake = new Path2D();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + (hash01(seed * 31 + i) - 0.5) * 0.6;
+      const r = s * (0.24 + 0.2 * hash01(seed * 17 + i * 3));
+      const x = c + Math.cos(a) * r;
+      const y = c + Math.sin(a) * r * 0.82;
+      if (i === 0) flake.moveTo(x, y);
+      else flake.lineTo(x, y);
+    }
+    flake.closePath();
+    g.fillStyle = color;
+    g.fill(flake);
+    g.save();
+    g.clip(flake);
+    const sheen = g.createLinearGradient(0, s * 0.12, s, s * 0.88);
+    if (back) {
+      sheen.addColorStop(0, 'rgba(110,70,0,0.26)');
+      sheen.addColorStop(1, 'rgba(70,40,0,0.14)');
+    } else {
+      sheen.addColorStop(0, 'rgba(255,255,255,0)');
+      sheen.addColorStop(0.42, 'rgba(255,250,222,0.9)');
+      sheen.addColorStop(0.56, 'rgba(255,255,255,0.12)');
+      sheen.addColorStop(1, 'rgba(120,70,0,0.28)');
+    }
+    g.fillStyle = sheen;
+    g.fillRect(0, 0, s, s);
+    // 구겨진 주름
+    g.strokeStyle = back ? 'rgba(96,60,4,0.32)' : 'rgba(140,92,16,0.4)';
+    g.lineWidth = 1.2;
+    for (let i = 0; i < 3; i++) {
+      g.beginPath();
+      g.moveTo(c + (hash01(seed * 7 + i * 5) - 0.5) * s * 0.5, c + (hash01(seed * 7 + i * 5 + 1) - 0.5) * s * 0.5);
+      g.lineTo(c + (hash01(seed * 7 + i * 5 + 2) - 0.5) * s * 0.6, c + (hash01(seed * 7 + i * 5 + 3) - 0.5) * s * 0.6);
+      g.stroke();
+    }
+    g.restore();
+    // 어두운 테두리 (밝은 화면에서도 조각 모양이 보이게)
+    g.strokeStyle = back ? 'rgba(104,66,6,0.5)' : 'rgba(118,76,8,0.55)';
+    g.lineWidth = 1.4;
+    g.stroke(flake);
   });
 }
 
@@ -480,6 +546,7 @@ const DEFAULT_COLORS: Record<Kind, string[]> = {
   confetti: ['#ff3d8b', '#e8ff3a', '#3ee8ff', '#ffffff', '#ff9a3c'],
   stars: ['#ffd65a', '#ffe38a', '#f7c33c'],
   glitter: ['#f5c542', '#ffd66e', '#e8b12e', '#fff1c1'],
+  goldleaf: ['#e2b84f', '#f0cd6a', '#cf9f3c', '#f6dc8c'],
   bubbles: ['#ffffff'],
   butterflies: ['#ff9fc4', '#8fc9ff', '#ffe27a', '#c9b0ff'],
   feathers: ['#ffffff'],
@@ -518,6 +585,8 @@ const FIELD: Record<Kind, FieldSpec> = {
   confetti: { size: [16, 30], fall: [80, 150], sway: 35, spin: 3.2, flip: 3.5, alpha: [0.85, 1] },
   stars: { size: [18, 42], fall: [16, 42], sway: 22, spin: 0.3, flip: 0, alpha: [0.7, 1], twinkle: 2.2 },
   glitter: { size: [9, 22], fall: [22, 55], sway: 26, spin: 0.8, flip: 0, alpha: [0.65, 1], twinkle: 4 },
+  // 금박은 뒤집히며 떨어져 앞면(밝게)과 뒷면(어둡게)이 번갈아 보임
+  goldleaf: { size: [20, 44], fall: [26, 62], sway: 70, spin: 1.3, flip: 2.4, alpha: [0.86, 1] },
   bubbles: { size: [30, 88], fall: [-58, -26], sway: 42, spin: 0, flip: 0, alpha: [0.7, 0.95], upright: true },
   butterflies: { size: [52, 88], fall: [0, 0], sway: 0, spin: 0, flip: 0, alpha: [0.9, 1], wander: 230, flutter: 9, upright: true },
   // 깃털은 뒤집히며 얇은 선처럼 보이지 않도록 돌기만 함
@@ -672,6 +741,10 @@ export class Effects {
       case 'glitter':
         s = list.map((c) => makeGlitter(c));
         break;
+      case 'goldleaf':
+        // [앞면, 뒷면] 짝으로 (drawField가 뒤집힌 정도에 따라 고름)
+        s = list.flatMap((c, i) => [makeGoldLeaf(c, i + 1, false), makeGoldLeaf(c, i + 1, true)]);
+        break;
       case 'bubbles':
         s = [makeBubble()];
         break;
@@ -745,7 +818,9 @@ export class Effects {
       if (fall < 0 && kind !== 'balloons') a *= Math.min(1, Math.max(0, y / (H * 0.55)));
       if (a <= 0.01) continue;
       ctx.globalAlpha = a;
-      this.drawSprite(sprites[i % sprites.length], x, y, size, rot, flip);
+      // 금박: 뒤집힌 쪽이면 어두운 뒷면 (돌며 번쩍이는 느낌)
+      const img = kind === 'goldleaf' ? sprites[(i % (sprites.length >> 1)) * 2 + (flip < 0 ? 1 : 0)] : sprites[i % sprites.length];
+      this.drawSprite(img, x, y, size, rot, flip);
     }
     ctx.restore();
   }
