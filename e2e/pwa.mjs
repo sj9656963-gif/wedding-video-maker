@@ -78,6 +78,10 @@ try {
       const regs = await navigator.serviceWorker.getRegistrations();
       return { scope: regs[0]?.scope ?? null, state: regs[0]?.installing?.state ?? regs[0]?.waiting?.state ?? 'not ready (30s)', controlled: false };
     }
+    // ready는 활성화가 끝나기 전(activating)에도 풀리므로 잠깐 기다림
+    if (r.active && r.active.state === 'activating') {
+      await Promise.race([new Promise((res) => r.active.addEventListener('statechange', res, { once: true })), new Promise((res) => setTimeout(res, 10000))]);
+    }
     return { scope: r.scope, state: r.active?.state ?? null, controlled: !!navigator.serviceWorker.controller };
   });
   check('서비스 워커 등록 · 활성 (사이트 주소 범위)', reg.state === 'activated' && reg.scope === base, JSON.stringify(reg));
@@ -140,10 +144,14 @@ try {
   check('인터넷 없이 사진 올리기 · 미리보기 (0초 표지 화면)', tl > 5 && lit > 20, `장면 ${tl}개, 밝기 ${lit.toFixed(1)}`);
   await page.screenshot({ path: path.join(outDir, 'pwa-offline.png') });
   // 처음 쓰는 스타일·글자 (이름): 한글 글꼴은 글자 묶음별로 나뉘어 있어, 안 써 본 묶음은 저장본에 없을 수 있음
+  // (스타일·문구는 단계 표시줄로 그 단계를 열어서)
+  await page.click('#fb-style');
   await page.click('label.theme-card:has(input[value="classic"])');
+  await page.click('#fb-text');
   await page.fill('#f-groom', '황보찬혁');
   await page.fill('#f-bride', '제갈윤슬');
   await page.waitForTimeout(3000);
+  await page.click('#fb-style');
   await page.click('label.theme-card:has(input[value="street"])');
   await page.waitForTimeout(3000);
   // 인터넷 없이 받지 못한 파일 (처음 쓰는 글꼴 조각 등)

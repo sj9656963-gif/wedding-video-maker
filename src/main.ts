@@ -5,7 +5,7 @@ import { PhotoLibrary, ResolutionCache } from './assets';
 import { StyleDemo, demoInfo, renderPoster, sampleAssets, sampleThumb, type DemoFocus } from './demo';
 import { collectTexts } from './draw-text';
 import { ensureFonts, fontsReady } from './fonts';
-import { formatTime, safeFileName } from './format';
+import { formatKoreanDate, formatTime, safeFileName } from './format';
 import { decodeMusicFile, loadDefaultMusic, mixMusic, musicTotalDuration, type MusicTrack } from './music';
 import { fileKey, importPhotos, isImageFile, sortPhotos, type SortMode } from './photos';
 import { PreviewPlayer, type PreviewAudio } from './preview';
@@ -18,6 +18,7 @@ import {
   STRUCTURAL_KEYS,
   THEMES,
   baseTheme,
+  customCount,
   resolveTheme,
   sanitizeCustom,
   type CustomKey,
@@ -26,7 +27,8 @@ import {
   type TitleDesign,
 } from './themes';
 import { initSite } from './site/site';
-import { CUSTOM_FOCUS, Customizer } from './ui/customizer';
+import { CUSTOM_FOCUS, Customizer, type Panel } from './ui/customizer';
+import { Flow, type StepId } from './ui/flow';
 import { StylePicker } from './ui/style-picker';
 import { attachSuggestions, type Suggest } from './ui/suggest';
 import {
@@ -236,6 +238,9 @@ function rebuild(audioMayChange = false): void {
   updateFab();
   updateMusicStatus();
   exportPanel.update();
+  flow.setBadge('photos', photos.length ? String(photos.length) : '');
+  flow.setDone('photos', photos.length > 0);
+  if (flow.current === 'export') renderReview();
   const durationChanged = (timeline?.duration ?? 0) !== prevDuration;
   player.refresh(audioMayChange || durationChanged);
 }
@@ -478,6 +483,11 @@ async function doImport(files: readonly File[]): Promise<void> {
     mineAutoShown = true;
     setLiveTab('mine');
   }
+  if (added.length) {
+    // 사진 단계면 '다음: 스타일 고르기'를 눈에 띄게, 다른 단계에서 끌어다 놓았으면 미리보기에 알림
+    if (flow.current === 'photos') flow.nudge();
+    else toast(`사진 ${added.length}장을 추가했어요`);
+  }
 }
 
 function seekToOutro(): void {
@@ -575,18 +585,36 @@ function placeLive(): void {
   if (liveBox.parentElement !== target) target.append(liveBox);
 }
 
-/** 화면 위쪽에 붙어 내용을 가리는 높이: 메뉴, 휴대폰은 위쪽에 붙는 미리보기까지 */
+const navHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 72;
+const flowBar = $('flow-bar');
+const liveZone = $('live-zone');
+
+// ───────────────────────── 만들기 단계 (한 자리에서 넘어가고 되돌아감) ─────────────────────────
+
+const flow = new Flow({
+  navInset: navHeight,
+  onChange: (step: StepId) => {
+    if (step === 'style' || step === 'sound') flow.setDone(step, true);
+    if (step === 'export') renderReview();
+    syncStuckTop();
+    updateFab();
+  },
+});
+
+/** 화면 위쪽에 붙어 내용을 가리는 높이: 메뉴와 PC의 단계 표시줄, 휴대폰은 위쪽에 붙는 미리보기까지 */
 function stuckTop(): number {
-  const nav = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 72;
-  if (!narrow.matches || liveBox.parentElement !== liveMobile || getComputedStyle(liveMobile).position !== 'sticky') return nav;
+  const nav = navHeight();
+  if (!narrow.matches) return nav + 8 + flowBar.offsetHeight;
+  if (liveZone.hidden || liveBox.parentElement !== liveMobile || getComputedStyle(liveMobile).position !== 'sticky') return nav;
   return nav + 6 + liveBox.offsetHeight;
 }
 
-/** 세부 설정 머리줄(이전·다음 스타일)이 위쪽 미리보기 바로 아래에 붙도록 CSS 값으로 */
+/** 세부 설정 머리줄(이전·다음 스타일, 항목 탭)이 단계 표시줄·위쪽 미리보기 바로 아래에 붙도록 CSS 값으로 */
 function syncStuckTop(): void {
   document.documentElement.style.setProperty('--stuck-top', `${Math.round(stuckTop())}px`);
 }
 new ResizeObserver(syncStuckTop).observe(liveBox);
+new ResizeObserver(syncStuckTop).observe(flowBar);
 
 function setLiveTab(tab: LiveTab, focusTab = false): void {
   liveTab = tab;
@@ -703,49 +731,101 @@ function seekToQuote(): void {
   if (seg) player.seek(seg.start + (seg.transitionIn?.duration ?? 0) + 2.2);
 }
 
-const suggests = new Map<string, Suggest>();
+const suggests = new Map<string, Suggest[]>();
 const SUGGEST_FIELDS: [string, string, SuggestField, 'replace' | 'line', string, number][] = [
   ['f-intro-title', 'sg-intro-title', 'introTitle', 'replace', '오프닝 제목 예시', 0],
   ['f-quotes', 'sg-quotes', 'quotes', 'line', '영상 중간 문구 예시', 4],
   ['f-outro-title', 'sg-outro-title', 'outroTitle', 'replace', '엔딩 제목 예시', 0],
   ['f-outro-message', 'sg-outro-message', 'outroMessage', 'replace', '엔딩 인사말 예시', 0],
   ['f-outro-notice', 'sg-outro-notice', 'outroNotice', 'replace', '엔딩 안내 문구 예시', 0],
+  // 세부 설정 '오프닝·문구' 탭의 같은 칸
+  ['fi-intro-title', 'sgi-intro-title', 'introTitle', 'replace', '오프닝 제목 예시', 0],
+  ['fi-outro-title', 'sgi-outro-title', 'outroTitle', 'replace', '엔딩 제목 예시', 0],
+  ['fi-outro-message', 'sgi-outro-message', 'outroMessage', 'replace', '엔딩 인사말 예시', 0],
+  ['fi-outro-notice', 'sgi-outro-notice', 'outroNotice', 'replace', '엔딩 안내 문구 예시', 0],
 ];
+/** 세부 설정 '오프닝·문구' 탭에서 오프닝 디자인 바로 아래에 쓰는 칸 (3단계 문구 입력과 같은 값) */
+const INLINE_FIELDS: [string, keyof WeddingInfo][] = [
+  ['fi-groom', 'groom'],
+  ['fi-bride', 'bride'],
+  ['fi-date', 'date'],
+  ['fi-time', 'time'],
+  ['fi-venue', 'venue'],
+  ['fi-intro-title', 'introTitle'],
+  ['fi-outro-title', 'outroTitle'],
+  ['fi-outro-message', 'outroMessage'],
+  ['fi-outro-notice', 'outroNotice'],
+];
+const whereOf = (key: string): Where => FIELDS.find((f) => f[1] === key)?.[2] ?? 'intro';
+/** 같은 내용을 쓰는 칸들 (어느 쪽에서 써도 다른 칸·미리보기가 함께 바뀜) */
+const infoFields = new Map<keyof WeddingInfo, (HTMLInputElement | HTMLTextAreaElement)[]>();
+const syncTextDone = () => flow.setDone('text', !!(state.info.groom.trim() && state.info.bride.trim()));
 
-for (const [id, key, where] of FIELDS) {
+function bindInfoField(id: string, key: keyof WeddingInfo): void {
   const el = $<HTMLInputElement | HTMLTextAreaElement>(id);
+  const where = whereOf(key);
   el.value = state.info[key];
+  infoFields.set(key, [...(infoFields.get(key) ?? []), el]);
   el.addEventListener('input', () => {
     state.info[key] = el.value;
+    for (const other of infoFields.get(key) ?? []) if (other !== el && other.value !== el.value) other.value = el.value;
     persist();
     // 감성 문구는 장면 구성에 영향을 주므로 다시 계산
     if (key === 'quotes') rebuildSoon();
     else player.refresh();
     refreshFontsSoon();
     demoInfoSoon(focusOfWhere(where));
-    suggests.get(id)?.refresh();
+    for (const s of suggests.get(key) ?? []) s.refresh();
+    if (key === 'groom' || key === 'bride') syncTextDone();
   });
   // 입력하는 문구가 보이는 장면으로 미리보기 이동
   el.addEventListener('focus', () => showChange(focusOfWhere(where), 3200));
 }
+for (const [id, key] of FIELDS) bindInfoField(id, key);
+for (const [id, key] of INLINE_FIELDS) bindInfoField(id, key);
+syncTextDone();
 
 for (const [fieldId, hostId, key, mode, label, fillAll] of SUGGEST_FIELDS) {
-  const where = FIELDS.find((f) => f[0] === fieldId)?.[2] ?? 'intro';
-  suggests.set(
-    fieldId,
-    attachSuggestions($(hostId), {
-      field: $<HTMLInputElement | HTMLTextAreaElement>(fieldId),
-      items: SUGGESTIONS[key],
-      mode,
-      label,
-      fillAll,
-      perPage: key === 'outroMessage' ? 2 : 4,
-      onApply: () => {
-        toast(`${label.replace(' 예시', '')}에 예시 문구를 넣었어요`);
-        showChange(focusOfWhere(where), 3200);
-      },
-    }),
-  );
+  const where = whereOf(key);
+  const s = attachSuggestions($(hostId), {
+    field: $<HTMLInputElement | HTMLTextAreaElement>(fieldId),
+    items: SUGGESTIONS[key],
+    mode,
+    label,
+    fillAll,
+    perPage: key === 'outroMessage' ? 2 : 4,
+    onApply: () => {
+      toast(`${label.replace(' 예시', '')}에 예시 문구를 넣었어요`);
+      showChange(focusOfWhere(where), 3200);
+    },
+  });
+  suggests.set(key, [...(suggests.get(key) ?? []), s]);
+}
+
+// '오프닝·문구' 탭의 [오프닝 | 엔딩]: 바꾸면 미리보기도 그 장면으로
+const TEXT_PANES = [
+  ['ct-intro', 'ctp-intro', 'intro'],
+  ['ct-outro', 'ctp-outro', 'outro'],
+] as const;
+function showTextPane(which: 'intro' | 'outro', focus = false): void {
+  for (const [tabId, paneId, w] of TEXT_PANES) {
+    const on = w === which;
+    const tab = $(tabId);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(paneId).hidden = !on;
+    if (on && focus) tab.focus();
+  }
+  showChange(which, HOLD_MS[which]);
+}
+for (const [tabId, , w] of TEXT_PANES) {
+  const tab = $(tabId);
+  tab.addEventListener('click', () => showTextPane(w));
+  tab.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    showTextPane(w === 'intro' ? 'outro' : 'intro', true);
+  });
 }
 
 // ───────────────────────── 스타일 (예시 영상 + 카드) ─────────────────────────
@@ -823,12 +903,31 @@ new IntersectionObserver(
 ).observe(demoStage);
 document.addEventListener('visibilitychange', updateDemoPlayback);
 
+// 되돌리기: 스타일·양식·꾸미기를 바꾸기 직전 상태를 쌓아 두고 하나씩 되돌림
+interface StyleSnap {
+  themeId: string;
+  variantId: string | null;
+  custom: Customization;
+}
+const undoStack: StyleSnap[] = [];
+const undoBtn = $<HTMLButtonElement>('sd-undo');
+function pushUndo(): void {
+  undoStack.push({ themeId: state.themeId, variantId: state.variantId, custom: { ...state.custom } });
+  if (undoStack.length > 60) undoStack.shift();
+  undoBtn.disabled = false;
+}
+
 const picker = new StylePicker({
   initial: { themeId: state.themeId, variantId: state.variantId },
   poster: (t, w, ph, at) => renderPoster(t, demoInfo(state.info), w, ph, at),
   topInset: stuckTop,
-  onDetail: (open) => customizer.setVisible(open),
+  onDetail: (open) => {
+    customizer.setVisible(open);
+    // 새로 열면 그 스타일의 양식부터
+    if (open) customizer.show('variant');
+  },
   onChange: (sel, what) => {
+    pushUndo();
     state.themeId = sel.themeId;
     state.variantId = sel.variantId;
     persist();
@@ -843,12 +942,23 @@ const picker = new StylePicker({
   },
 });
 
+/** 탭을 바꾸면 미리보기도 그 항목이 보이는 장면으로 */
+const PANEL_FOCUS: Partial<Record<Panel, DemoFocus>> = { opening: 'intro', font: 'intro', motion: 'transition' };
+
 const customizer = new Customizer({
   initial: state.custom,
   plain: plainTheme,
   designPoster: (design: TitleDesign, w, ph) =>
     renderPoster(resolveTheme(state.themeId, { variant: state.variantId, ...state.custom, title: design }), demoInfo(state.info), w, ph, 'intro'),
+  finishLabel: '다 골랐어요 · 다음: 문구 입력',
+  onFinish: () => flow.go('text'),
+  bottomInset: () => (narrow.matches && !typing ? flowBar.offsetHeight + 8 : 0),
+  onPanel: (p) => {
+    const target = PANEL_FOCUS[p];
+    if (target) showChange(target, HOLD_MS[target] || 2600);
+  },
   onChange: (custom, key, message) => {
+    pushUndo();
     state.custom = custom;
     hoverCustom = null;
     hoverKey = null;
@@ -889,6 +999,38 @@ const customizer = new Customizer({
       player.refresh();
     }
   },
+});
+
+/** 방금 바꾼 스타일·양식·꾸미기를 하나 되돌림 */
+function undoStyle(): void {
+  const s = undoStack.pop();
+  undoBtn.disabled = undoStack.length === 0;
+  if (!s || exporting) return;
+  const restart = s.themeId !== state.themeId || s.variantId !== state.variantId;
+  state.themeId = s.themeId;
+  state.variantId = s.variantId;
+  state.custom = s.custom;
+  hoverCustom = null;
+  hoverKey = null;
+  picker.setSelection({ themeId: s.themeId, variantId: s.variantId });
+  customizer.setCustom(s.custom);
+  persist();
+  rebuild();
+  refreshFonts();
+  customizer.refresh();
+  customizer.invalidatePosters();
+  showDemo(currentTheme(), { restart });
+  if (liveTab === 'mine' && timeline && !player.isPlaying) player.seek(4.5);
+  toast('방금 바꾼 것을 되돌렸어요');
+}
+undoBtn.addEventListener('click', undoStyle);
+// 스타일 단계에서 Ctrl+Z(⌘Z): 글자를 쓰는 칸이 아니면 스타일·꾸미기 되돌리기
+const TEXT_ENTRY = 'input[type="text"], input[type="date"], input[type="time"], input[type="color"], input:not([type]), textarea, select, [contenteditable="true"]';
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+  if (flow.current !== 'style' || !undoStack.length || (e.target as HTMLElement).matches?.(TEXT_ENTRY)) return;
+  e.preventDefault();
+  undoStyle();
 });
 
 // ───────────────────────── 홈 화면 라이브 데모 (스타일을 차례로 보여줌) ─────────────────────────
@@ -944,7 +1086,8 @@ document.addEventListener('visibilitychange', updateHeroPlayback);
 
 const site = initSite({
   onPickStyle: (id) => {
-    // 고른 스타일 카드로 이동하고, 그 아래에 양식·꾸미기를 열어 둠
+    // 스타일 단계를 열고, 고른 스타일 카드로 이동해 그 아래에 세부 설정을 열어 둠
+    flow.go('style', { focus: false, scroll: false });
     picker.select(id);
     picker.scrollToSelection();
   },
@@ -1156,6 +1299,57 @@ seekInput.addEventListener('change', () => {
 
 // ───────────────────────── 내보내기 ─────────────────────────
 
+const reviewEl = $('review');
+
+/** 만들기 단계 위쪽: 고른 내용을 한눈에 (바꾸기를 누르면 그 단계가 이 자리에 열림) */
+function renderReview(): void {
+  const theme = currentTheme();
+  const variant = theme.variants.find((v) => v.id === theme.variantId);
+  const custom = customCount(state.custom);
+  const names = [state.info.groom.trim(), state.info.bride.trim()].filter(Boolean);
+  const date = state.info.date ? formatKoreanDate(state.info.date, state.info.time) : '';
+  const n = state.photos.length;
+  const rows: { step: StepId; k: string; v: string; ok: boolean }[] = [
+    {
+      step: 'photos',
+      k: '사진',
+      v: n ? `${n}장${excludedIds.size ? ` · 뒤쪽 ${excludedIds.size}장은 길이가 모자라 빠져요` : ''}` : '아직 올린 사진이 없어요',
+      ok: n > 0 && excludedIds.size === 0,
+    },
+    {
+      step: 'style',
+      k: '스타일',
+      v: [`${theme.name}${variant && theme.variants.length > 1 ? ` · ${variant.name}` : ''}`, custom ? `직접 꾸민 항목 ${custom}개` : ''].filter(Boolean).join(' · '),
+      ok: true,
+    },
+    {
+      step: 'text',
+      k: '문구',
+      v: names.length ? [names.join(' ♥ '), date].filter(Boolean).join(' · ') : '신랑·신부 이름을 아직 안 넣었어요',
+      ok: names.length === 2,
+    },
+    {
+      step: 'sound',
+      k: '음악·길이',
+      v: `${hasCustomMusic() ? `내 음악 ${state.customMusic.length}곡` : '기본 음악'} · ${timeline ? formatTime(timeline.duration) : '사진을 올리면 정해져요'}`,
+      ok: true,
+    },
+  ];
+  reviewEl.replaceChildren(
+    ...rows.map((r) =>
+      h('li', { class: r.ok ? '' : 'todo' }, [
+        h('span', { class: 'rv-k', text: r.k }),
+        h('span', { class: 'rv-v', text: r.v }),
+        h('button', {
+          class: 'btn subtle small rv-go',
+          text: r.ok ? '바꾸기' : '넣기',
+          attrs: { type: 'button', 'aria-label': `${r.k} ${r.ok ? '바꾸기' : '넣기'}`, 'data-go': r.step },
+          on: { click: () => flow.go(r.step) },
+        }),
+      ]),
+    ),
+  );
+}
 const stepsEl = $('steps');
 
 function getJob(): ExportJob | null {
@@ -1195,7 +1389,7 @@ const exportPanel = setupExportPanel({
   },
   onBusyChange: (busy) => {
     exporting = busy;
-    stepsEl.inert = busy;
+    flow.setBusy(busy);
     if (busy) {
       player.pause();
       editor.close();
@@ -1276,7 +1470,7 @@ sheet.addEventListener('click', (e) => {
 $('ps-close').addEventListener('click', () => sheet.close());
 $('ps-export').addEventListener('click', () => {
   sheet.close();
-  $('h-export').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  flow.go('export');
 });
 
 // ───────────────────────── 시작 ─────────────────────────
@@ -1326,6 +1520,8 @@ if (new URLSearchParams(location.search).has('e2e')) {
     heroPlaying: () => heroDemo.isPlaying,
     liveTab: () => liveTab,
     detailOpen: () => picker.detailOpen,
+    step: () => flow.current,
+    czPanel: () => customizer.current,
     /** 사진마다 문구 넣기 (화면 캡처 점검용): fn(순서) → 문구 */
     setCaptions: (fn: (index: number) => string) => {
       state.photos.forEach((p, i) => {

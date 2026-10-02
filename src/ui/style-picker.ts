@@ -1,7 +1,7 @@
 // 스튜디오의 스타일 고르기: 분위기 필터, 스타일 카드 17종, 그리고 고른 카드가 있는 줄 바로 아래에 열리는
-// 세부 설정(양식 + 꾸미기). 다른 카드를 누르면 세부 설정이 그 카드 아래로 따라가므로, 스타일을 바꿔 가며
-// 꾸며 볼 때 목록과 설정 사이를 오르내리며 스크롤할 필요가 없음.
-// 꾸미기(오프닝 디자인·글씨체·효과 등) 내용은 customizer.ts에서.
+// 세부 설정(양식·오프닝과 문구·글씨체·색감·효과·전환 탭). 다른 카드를 누르면 세부 설정이 그 카드 아래로 따라가므로,
+// 스타일을 바꿔 가며 꾸며 볼 때 목록과 설정 사이를 오르내리며 스크롤할 필요가 없음.
+// 탭과 꾸미기 내용은 customizer.ts에서.
 
 import { MOODS, THEMES, baseTheme, resolveTheme, type MoodId, type Theme } from '../themes';
 import { $, h } from './dom';
@@ -61,9 +61,9 @@ export class StylePicker {
     $('sd-done').addEventListener('click', () => this.closeDetail(true));
     // 열릴 때의 움직임은 한 번만 (다른 줄로 옮길 때 다시 재생되면 화면 위치 보정이 어긋남)
     this.detailEl.addEventListener('animationend', () => this.detailEl.classList.remove('enter'));
-    // 화면 폭이 바뀌어 한 줄의 카드 수가 달라지면 세부 설정을 다시 그 줄 아래로
+    // 화면 폭이 바뀌어 한 줄의 카드 수가 달라지면 세부 설정을 다시 그 줄 아래로 (스타일 단계가 숨어 있을 때는 그대로)
     new ResizeObserver(() => {
-      if (!this.open) return;
+      if (!this.open || !this.listEl.offsetParent) return;
       const n = this.columns();
       if (n === this.cols) this.caret();
       else this.withAnchor(this.detailEl, () => this.place());
@@ -100,6 +100,24 @@ export class StylePicker {
     if (this.mood !== 'all' && !baseTheme(themeId).moods.includes(this.mood)) this.setMood('all');
     input.checked = true;
     this.openDetail(card, false, () => this.pickTheme(themeId));
+  }
+
+  /** 되돌리기: 스타일·양식을 바꿈 (onChange 없이). 세부 설정이 열려 있으면 그 카드 아래로 옮기되 화면에서는 제자리 */
+  setSelection(sel: StyleSelection): void {
+    const base = baseTheme(sel.themeId);
+    const card = this.cards.get(base.id);
+    const input = card?.querySelector('input');
+    if (!card || !input) return;
+    if (this.mood !== 'all' && !base.moods.includes(this.mood)) this.setMood('all');
+    const apply = () => {
+      input.checked = true;
+      this.sel.themeId = base.id;
+      this.sel.variantId = base.variants.some((v) => v.id === sel.variantId) ? sel.variantId : null;
+      this.renderVariants();
+      if (this.open) this.place();
+    };
+    if (this.open) this.withAnchor(this.detailEl, apply);
+    else apply();
   }
 
   /** 고른 카드가 위쪽 미리보기·메뉴에 가리지 않는 자리로 스크롤 */
@@ -324,6 +342,8 @@ export class StylePicker {
     const current = this.sel.variantId ?? base.variants[0].id;
     this.detailName.textContent = base.name;
     this.variantHelp.textContent = `· ${base.name} 스타일 ${base.variants.length}가지`;
+    // 양식이 많으면 휴대폰에서 두 줄로 옆으로 넘겨 보게 (세로로 길어지지 않게)
+    this.variantEl.classList.toggle('many', base.variants.length > 4);
     this.variantEl.replaceChildren(
       ...base.variants.map((v) => {
         const input = h('input', { attrs: { type: 'radio', name: 'variant', value: v.id } });

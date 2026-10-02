@@ -354,9 +354,22 @@
 
         <div class="wrap layout">
           <div class="steps" id="steps">
+            <!-- 단계 표시줄: 누르면 그 단계가 이 자리에 바로 열림 (PC는 위쪽, 휴대폰은 아래쪽에 붙어 있음) -->
+            <nav class="flow-bar" id="flow-bar" aria-label="만들기 단계">
+              <button type="button" class="fb-btn fb-prev" id="fb-prev" aria-label="이전 단계"><span aria-hidden="true">‹</span><span class="fb-word"> 이전</span></button>
+              <ol class="fb-steps">
+                <li><button type="button" class="fb-step" id="fb-photos" data-go="photos"><span class="fb-n" aria-hidden="true">1</span><span class="sr-only">1단계 </span><span class="fb-t">사진</span><span class="fb-badge" id="fbb-photos"></span></button></li>
+                <li><button type="button" class="fb-step" id="fb-style" data-go="style"><span class="fb-n" aria-hidden="true">2</span><span class="sr-only">2단계 </span><span class="fb-t">스타일</span></button></li>
+                <li><button type="button" class="fb-step" id="fb-text" data-go="text"><span class="fb-n" aria-hidden="true">3</span><span class="sr-only">3단계 </span><span class="fb-t">문구</span></button></li>
+                <li><button type="button" class="fb-step" id="fb-sound" data-go="sound"><span class="fb-n" aria-hidden="true">4</span><span class="sr-only">4단계 </span><span class="fb-t">음악·길이</span></button></li>
+                <li><button type="button" class="fb-step" id="fb-export" data-go="export"><span class="fb-n" aria-hidden="true">5</span><span class="sr-only">5단계 </span><span class="fb-t">만들기</span></button></li>
+              </ol>
+              <button type="button" class="fb-btn fb-next" id="fb-next"><span class="fb-word">다음</span><span class="fb-to" id="fb-next-to"></span><span aria-hidden="true">&nbsp;›</span></button>
+            </nav>
+
             <!-- 1. 사진 -->
-            <section class="card" aria-labelledby="h-photos">
-              <h2 id="h-photos"><span class="num" aria-hidden="true">1</span>사진 올리기</h2>
+            <section class="card step" data-step="photos" id="step-photos" aria-labelledby="h-photos">
+              <h2 id="h-photos" tabindex="-1"><span class="num" aria-hidden="true">1</span>사진 올리기</h2>
               <div id="dropzone" class="dropzone">
                 <input id="file-input" type="file" accept="image/*,.heic,.heif" multiple hidden />
                 <input id="folder-input" type="file" multiple hidden webkitdirectory />
@@ -394,47 +407,91 @@
               <ol id="photo-grid" class="photo-grid" aria-label="영상에 들어갈 사진 순서"></ol>
             </section>
 
-            <div class="live-zone" id="live-zone">
-              <!-- 휴대폰: 스타일·꾸미기·문구를 고르는 동안 위쪽에 붙어 있는 미리보기 자리 -->
+            <div class="live-zone" id="live-zone" hidden>
+              <!-- 휴대폰: 스타일·문구 단계에서 위쪽에 붙어 있는 미리보기 자리 -->
               <div class="live-mobile" id="live-mobile"></div>
 
-              <!-- 2. 스타일 고르고 꾸미기: 카드를 누르면 그 카드가 있는 줄 바로 아래에 양식·꾸미기가 열림 -->
-              <section class="card" aria-labelledby="h-style" id="style-card">
-                <h2 id="h-style"><span class="num" aria-hidden="true">2</span>스타일 고르고 꾸미기</h2>
-                <p class="section-lead">카드를 누르면 <b>바로 아래에 양식과 꾸미기</b>가 열려요. <span class="only-wide">고르는 즉시 오른쪽 미리보기가 바뀌어요.</span><span class="only-narrow">고르는 즉시 위쪽 미리보기가 바뀌어요.</span></p>
+              <!-- 2. 스타일 고르고 꾸미기: 카드를 누르면 그 카드가 있는 줄 바로 아래에 세부 설정이 열림 -->
+              <section class="card step" data-step="style" aria-labelledby="h-style" id="style-card" hidden>
+                <h2 id="h-style" tabindex="-1"><span class="num" aria-hidden="true">2</span>스타일 고르고 꾸미기</h2>
+                <p class="section-lead">카드를 누르면 <b>바로 아래에 세부 설정</b>이 열려요. 양식 · 오프닝과 문구 · 글씨체 · 색감 · 효과 · 전환을 탭으로 그 자리에서 바꿔 가며 고르고, <span class="only-wide">오른쪽 미리보기로 바로 확인해요.</span><span class="only-narrow">위쪽 미리보기로 바로 확인해요.</span></p>
                 <div id="mood-filter" class="chip-group mood-filter" role="group" aria-label="분위기로 거르기"></div>
                 <div id="theme-list" class="theme-list" role="group" aria-label="영상 스타일"></div>
 
-                <!-- 고른 스타일의 세부 설정 (style-picker.ts가 고른 카드의 줄 바로 아래로 옮겨 엶) -->
+                <!-- 고른 스타일의 세부 설정 (style-picker.ts가 고른 카드의 줄 바로 아래로 옮겨 엶). 머리줄(스타일 바꾸기 + 항목 탭)은 화면 위에 붙어 있음 -->
                 <section class="style-detail" id="style-detail" aria-labelledby="sd-title" hidden>
                   <div class="sd-head">
-                    <h3 class="sd-title" id="sd-title"><span id="sd-name"></span><span class="sd-sub"> 세부 설정</span></h3>
-                    <div class="sd-nav" role="group" aria-label="다른 스타일로 바꾸기">
-                      <button type="button" class="btn subtle small" id="sd-prev" aria-label="이전 스타일"><span aria-hidden="true">‹ </span>이전<span class="sd-long"> 스타일</span></button>
-                      <button type="button" class="btn subtle small" id="sd-next" aria-label="다음 스타일">다음<span class="sd-long"> 스타일</span><span aria-hidden="true"> ›</span></button>
-                      <button type="button" class="btn subtle small" id="sd-close" aria-label="세부 설정 접기">접기<span aria-hidden="true"> ▴</span></button>
-                    </div>
-                  </div>
-                  <div class="sd-block sd-variants">
-                    <h4 class="sd-h">양식 <small id="variant-help"></small></h4>
-                    <div id="variant-list" class="variant-list" role="radiogroup" aria-label="양식"></div>
-                  </div>
-                  <div class="sd-block sd-custom" id="custom-card">
-                    <div class="card-head">
-                      <h4 class="sd-h" id="h-custom">꾸미기 <small>오프닝 디자인 · 글씨체 · 색감 · 효과 · 전환<span class="only-pointer"> · 마우스를 올리면 먼저 보여 줘요</span></small></h4>
-                      <div class="cz-state">
-                        <span id="cz-count" class="cz-count" aria-live="polite"></span>
-                        <button type="button" id="cz-reset" class="btn subtle small" hidden>모두 스타일 기본으로</button>
+                    <div class="sd-row">
+                      <h3 class="sd-title" id="sd-title"><span id="sd-name"></span><span class="sd-sub"> 세부 설정</span></h3>
+                      <div class="sd-nav" role="group" aria-label="스타일 바꾸기">
+                        <button type="button" class="btn subtle small" id="sd-undo" aria-label="되돌리기 (방금 바꾼 것 취소)" title="방금 바꾼 것 되돌리기" disabled><span aria-hidden="true">↶</span><span class="sd-long"> 되돌리기</span></button>
+                        <button type="button" class="btn subtle small" id="sd-prev" aria-label="이전 스타일"><span aria-hidden="true">‹ </span>이전<span class="sd-long"> 스타일</span></button>
+                        <button type="button" class="btn subtle small" id="sd-next" aria-label="다음 스타일">다음<span class="sd-long"> 스타일</span><span aria-hidden="true"> ›</span></button>
+                        <button type="button" class="btn subtle small" id="sd-close" aria-label="세부 설정 접기">접기<span aria-hidden="true"> ▴</span></button>
                       </div>
                     </div>
-                    <div class="cz-tabs" id="cz-tabs" role="tablist" aria-label="꾸미기 항목">
-                      <button type="button" role="tab" id="czt-opening" data-panel="opening" aria-controls="czp-opening" aria-selected="true">오프닝</button>
-                      <button type="button" role="tab" id="czt-font" data-panel="font" aria-controls="czp-font" aria-selected="false" tabindex="-1">글씨체</button>
-                      <button type="button" role="tab" id="czt-color" data-panel="color" aria-controls="czp-color" aria-selected="false" tabindex="-1">색감</button>
-                      <button type="button" role="tab" id="czt-effect" data-panel="effect" aria-controls="czp-effect" aria-selected="false" tabindex="-1">효과</button>
-                      <button type="button" role="tab" id="czt-motion" data-panel="motion" aria-controls="czp-motion" aria-selected="false" tabindex="-1">전환 · 연출</button>
+                    <div class="cz-tabs" id="cz-tabs" role="tablist" aria-label="세부 설정 항목">
+                      <button type="button" role="tab" id="czt-variant" data-panel="variant" data-name="양식" aria-controls="czp-variant" aria-selected="true">양식</button>
+                      <button type="button" role="tab" id="czt-opening" data-panel="opening" data-name="오프닝·문구" aria-controls="czp-opening" aria-selected="false" tabindex="-1">오프닝·문구</button>
+                      <button type="button" role="tab" id="czt-font" data-panel="font" data-name="글씨체" aria-controls="czp-font" aria-selected="false" tabindex="-1">글씨체</button>
+                      <button type="button" role="tab" id="czt-color" data-panel="color" data-name="색감" aria-controls="czp-color" aria-selected="false" tabindex="-1">색감</button>
+                      <button type="button" role="tab" id="czt-effect" data-panel="effect" data-name="효과" aria-controls="czp-effect" aria-selected="false" tabindex="-1">효과</button>
+                      <button type="button" role="tab" id="czt-motion" data-panel="motion" data-name="전환·연출" aria-controls="czp-motion" aria-selected="false" tabindex="-1">전환<span class="tab-plus">·연출</span></button>
                     </div>
-                    <div class="cz-panel" id="czp-opening" role="tabpanel" aria-labelledby="czt-opening"></div>
+                  </div>
+                  <div class="sd-body" id="custom-card" data-panel="variant">
+                    <div class="cz-state">
+                      <span class="cz-hint" id="h-custom">고르는 즉시 미리보기에 적용돼요<span class="only-pointer"> · 마우스를 올리면 먼저 보여 줘요</span></span>
+                      <span class="cz-right">
+                        <span id="cz-count" class="cz-count" aria-live="polite"></span>
+                        <button type="button" id="cz-reset" class="btn subtle small" hidden>모두 스타일 기본으로</button>
+                      </span>
+                    </div>
+                    <div class="cz-panel" id="czp-variant" role="tabpanel" aria-labelledby="czt-variant">
+                      <h4 class="sd-h">양식 <small id="variant-help"></small></h4>
+                      <div id="variant-list" class="variant-list" role="radiogroup" aria-label="양식"></div>
+                    </div>
+                    <div class="cz-panel" id="czp-opening" role="tabpanel" aria-labelledby="czt-opening" hidden>
+                      <!-- 오프닝 디자인 바로 아래에서 문구를 씀 (3단계 '문구 입력'과 같은 내용이 함께 바뀜) -->
+                      <div class="opt-block cz-text" id="cz-text">
+                        <div class="cz-text-head">
+                          <h3 class="opt-h">문구 <small>쓰는 대로 미리보기에 나와요<span class="ct-more"> · 3단계 '문구 입력'과 같은 칸이에요</span></small></h3>
+                          <div class="seg ct-tabs" role="tablist" aria-label="문구를 쓸 자리">
+                            <button type="button" class="seg-tab" role="tab" id="ct-intro" aria-controls="ctp-intro" aria-selected="true">오프닝</button>
+                            <button type="button" class="seg-tab" role="tab" id="ct-outro" aria-controls="ctp-outro" aria-selected="false" tabindex="-1">엔딩</button>
+                          </div>
+                        </div>
+                        <div class="form-grid compact" id="ctp-intro" role="tabpanel" aria-labelledby="ct-intro">
+                          <label>신랑 이름<input id="fi-groom" type="text" maxlength="20" autocomplete="off" placeholder="예: 김민준" /></label>
+                          <label>신부 이름<input id="fi-bride" type="text" maxlength="20" autocomplete="off" placeholder="예: 이서연" /></label>
+                          <label>예식 날짜<input id="fi-date" type="date" /></label>
+                          <label>예식 시간<input id="fi-time" type="time" step="600" /></label>
+                          <label class="span2">예식 장소<input id="fi-venue" type="text" maxlength="40" placeholder="예: 더채플 청담 3층 그랜드홀" /></label>
+                          <div class="field span2">
+                            <label for="fi-intro-title">오프닝 제목 <small>(비워 두면 스타일 기본 문구)</small></label>
+                            <input id="fi-intro-title" type="text" maxlength="30" autocomplete="off" placeholder="예: Our Wedding Day" />
+                            <div id="sgi-intro-title"></div>
+                          </div>
+                        </div>
+                        <div class="form-grid compact" id="ctp-outro" role="tabpanel" aria-labelledby="ct-outro" hidden>
+                          <div class="field span2">
+                            <label for="fi-outro-title">엔딩 제목 <small>(비워 두면 스타일 기본 문구)</small></label>
+                            <input id="fi-outro-title" type="text" maxlength="30" autocomplete="off" placeholder="예: Thank You" />
+                            <div id="sgi-outro-title"></div>
+                          </div>
+                          <div class="field span2">
+                            <label for="fi-outro-message">엔딩 인사말</label>
+                            <textarea id="fi-outro-message" rows="2" maxlength="120"></textarea>
+                            <div id="sgi-outro-message"></div>
+                          </div>
+                          <div class="field span2">
+                            <label for="fi-outro-notice">엔딩 안내 문구</label>
+                            <input id="fi-outro-notice" type="text" maxlength="40" autocomplete="off" />
+                            <div id="sgi-outro-notice"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     <div class="cz-panel" id="czp-font" role="tabpanel" aria-labelledby="czt-font" hidden></div>
                     <div class="cz-panel" id="czp-color" role="tabpanel" aria-labelledby="czt-color" hidden></div>
                     <div class="cz-panel" id="czp-effect" role="tabpanel" aria-labelledby="czt-effect" hidden></div>
@@ -446,15 +503,20 @@
                   </div>
                   <div class="sd-foot">
                     <button type="button" class="btn subtle small" id="sd-done">다 골랐어요 · 접기<span aria-hidden="true"> ▴</span></button>
+                    <span class="sd-steps">
+                      <button type="button" class="btn subtle small" id="sd-tab-prev"><span aria-hidden="true">‹ </span><span id="sd-tab-prev-l">이전 항목</span></button>
+                      <button type="button" class="btn primary small" id="sd-tab-next"><span id="sd-tab-next-l">다음 항목</span><span aria-hidden="true"> ›</span></button>
+                    </span>
                   </div>
                 </section>
               </section>
 
               <!-- 3. 문구 -->
-              <section class="card" aria-labelledby="h-text" id="text-card">
-                <h2 id="h-text"><span class="num" aria-hidden="true">3</span>문구 입력</h2>
-                <p class="section-lead">떠오르는 문구가 없으면 칸 아래 <b>예시</b>를 눌러 보세요. 바로 들어가고, 입력하는 대로 미리보기에 나와요.</p>
+              <section class="card step" data-step="text" aria-labelledby="h-text" id="text-card" hidden>
+                <h2 id="h-text" tabindex="-1"><span class="num" aria-hidden="true">3</span>문구 입력</h2>
+                <p class="section-lead">떠오르는 문구가 없으면 칸 아래 <b>예시</b>를 눌러 보세요. 바로 들어가고, 쓰는 칸에 맞춰 미리보기가 그 장면으로 이동해요.</p>
                 <div class="form-grid">
+                  <p class="form-sub span2">오프닝</p>
                   <label>신랑 이름<input id="f-groom" type="text" maxlength="20" autocomplete="off" placeholder="예: 김민준" /></label>
                   <label>신부 이름<input id="f-bride" type="text" maxlength="20" autocomplete="off" placeholder="예: 이서연" /></label>
                   <label>예식 날짜<input id="f-date" type="date" /></label>
@@ -465,11 +527,13 @@
                     <input id="f-intro-title" type="text" maxlength="30" autocomplete="off" placeholder="예: Our Wedding Day" />
                     <div id="sg-intro-title"></div>
                   </div>
+                  <p class="form-sub span2">영상 중간</p>
                   <div class="field span2">
                     <label for="f-quotes">영상 중간 문구 <small>(선택 · 한 줄에 하나씩 쓰면 사진 옆에 글로 나와요 · 비워 두면 넣지 않아요)</small></label>
                     <textarea id="f-quotes" rows="3" maxlength="400"></textarea>
                     <div id="sg-quotes"></div>
                   </div>
+                  <p class="form-sub span2">엔딩</p>
                   <div class="field span2">
                     <label for="f-outro-title">엔딩 제목 <small>(비워 두면 스타일 기본 문구)</small></label>
                     <input id="f-outro-title" type="text" maxlength="30" autocomplete="off" placeholder="예: Thank You" />
@@ -489,9 +553,10 @@
               </section>
             </div>
 
-            <!-- 5. 음악 -->
-            <section class="card" aria-labelledby="h-music">
-              <h2 id="h-music"><span class="num" aria-hidden="true">4</span>배경음악</h2>
+            <!-- 4. 음악 · 길이 -->
+            <section class="card step" data-step="sound" id="step-sound" aria-labelledby="h-sound" hidden>
+              <h2 id="h-sound" tabindex="-1"><span class="num" aria-hidden="true">4</span>음악 · 길이</h2>
+              <h3 class="sub-h" id="h-music">배경음악</h3>
               <div class="radio-row" role="radiogroup" aria-label="배경음악 선택">
                 <label class="radio-card">
                   <input type="radio" name="music" value="default" checked />
@@ -509,14 +574,43 @@
                 <p class="hint">여러 곡은 선택한 순서대로 자연스럽게 이어지고, 영상보다 짧으면 반복돼요. 상업 음원은 사용 범위와 저작권을 확인해 주세요.</p>
               </div>
               <div id="music-status" class="status" role="status" aria-live="polite"></div>
-            </section>
 
-            <!-- 6. 길이 -->
-            <section class="card" aria-labelledby="h-length">
-              <h2 id="h-length"><span class="num" aria-hidden="true">5</span>영상 길이</h2>
+              <h3 class="sub-h" id="h-length">영상 길이</h3>
               <div id="duration-options" class="chip-group wrap-chips" role="group" aria-label="영상 길이"></div>
               <p id="timeline-summary" class="summary" aria-live="polite"></p>
               <div id="timeline-error" class="error" role="alert" hidden></div>
+            </section>
+
+            <!-- 5. 영상 만들기: 고른 내용을 한눈에 확인하고 (바꾸기를 누르면 그 단계로) 바로 만들기 -->
+            <section class="card step" data-step="export" id="step-export" aria-labelledby="h-export" hidden>
+              <h2 id="h-export" tabindex="-1"><span class="num" aria-hidden="true">5</span>영상 만들기</h2>
+              <ul class="review" id="review" aria-label="고른 내용 확인"></ul>
+              <div class="export">
+                <label class="inline"><span>화질</span>
+                  <select id="f-quality">
+                    <option value="1080p">Full HD 1080p (권장)</option>
+                    <option value="720p">HD 720p (더 빠름)</option>
+                  </select>
+                </label>
+                <p id="export-estimate" class="muted"></p>
+                <button type="button" id="btn-export" class="btn primary big" disabled>MP4 영상 만들기</button>
+                <div id="export-progress" class="progress-wrap" hidden>
+                  <progress id="progress" max="1" value="0" aria-label="영상 만들기 진행률"></progress>
+                  <p id="progress-text" class="muted" aria-live="polite"></p>
+                  <button type="button" id="btn-cancel" class="btn subtle">취소</button>
+                </div>
+                <div id="export-error" class="error" role="alert" hidden></div>
+                <div id="export-result" class="result" hidden>
+                  <video id="result-video" controls playsinline preload="metadata"></video>
+                  <button type="button" id="share" class="btn primary big" hidden>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M6 12v6.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V12" /></svg>
+                    사진 앱에 저장 · 공유하기
+                  </button>
+                  <a id="download" class="btn primary big" href="#" download>MP4 파일 저장하기</a>
+                  <p id="result-info" class="muted"></p>
+                </div>
+                <p class="hint">영상을 만드는 동안에는 화면을 켜 둔 채로 이 화면에 머물러 주세요. 탭을 닫거나 다른 앱·탭으로 오래 옮기면 멈출 수 있어요.</p>
+              </div>
             </section>
           </div>
 
@@ -571,34 +665,6 @@
                   </div>
                 </div>
               </div>
-
-              <div class="export">
-                <h2 id="h-export"><span class="num" aria-hidden="true">6</span>영상 만들기</h2>
-                <label class="inline"><span>화질</span>
-                  <select id="f-quality">
-                    <option value="1080p">Full HD 1080p (권장)</option>
-                    <option value="720p">HD 720p (더 빠름)</option>
-                  </select>
-                </label>
-                <p id="export-estimate" class="muted"></p>
-                <button type="button" id="btn-export" class="btn primary big" disabled>MP4 영상 만들기</button>
-                <div id="export-progress" class="progress-wrap" hidden>
-                  <progress id="progress" max="1" value="0" aria-label="영상 만들기 진행률"></progress>
-                  <p id="progress-text" class="muted" aria-live="polite"></p>
-                  <button type="button" id="btn-cancel" class="btn subtle">취소</button>
-                </div>
-                <div id="export-error" class="error" role="alert" hidden></div>
-                <div id="export-result" class="result" hidden>
-                  <video id="result-video" controls playsinline preload="metadata"></video>
-                  <button type="button" id="share" class="btn primary big" hidden>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M6 12v6.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V12" /></svg>
-                    사진 앱에 저장 · 공유하기
-                  </button>
-                  <a id="download" class="btn primary big" href="#" download>MP4 파일 저장하기</a>
-                  <p id="result-info" class="muted"></p>
-                </div>
-                <p class="hint">영상을 만드는 동안에는 화면을 켜 둔 채로 이 화면에 머물러 주세요. 탭을 닫거나 다른 앱·탭으로 오래 옮기면 멈출 수 있어요.</p>
-              </div>
             </section>
           </aside>
         </div>
@@ -626,7 +692,7 @@
             </details>
             <details>
               <summary>글씨체나 색, 효과를 직접 바꿀 수 있나요?</summary>
-              <div class="ans"><p>네. 스타일 카드를 누르면 바로 아래에 양식과 '꾸미기'가 열려요. 오프닝 디자인, 영문·한글 글씨체, 색감 필터, 포인트 색, 흩날리는 효과, 화면 테두리, 전환 효과와 속도를 직접 고를 수 있고, 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동해 바로 보여 줘요. 마음에 안 들면 '이전 스타일 · 다음 스타일'로 바로 바꿔 볼 수 있고, 언제든 '모두 스타일 기본으로'를 눌러 되돌릴 수 있어요.</p></div>
+              <div class="ans"><p>네. 스타일 카드를 누르면 바로 아래에 세부 설정이 열리고, 위쪽 탭으로 양식 · 오프닝과 문구 · 글씨체 · 색감 · 효과 · 전환을 그 자리에서 바꿔 가며 고를 수 있어요. 오프닝 디자인을 고른 바로 아래에서 이름·날짜·제목을 쓰면 미리보기에 바로 나와요. 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동하고, 마음에 안 들면 '되돌리기'로 방금 바꾼 것을 취소하거나 '모두 스타일 기본으로'를 누르면 돼요. 사진 · 스타일 · 문구 · 음악·길이 · 만들기 단계도 위쪽(휴대폰은 아래쪽) 단계 표시줄로 스크롤 없이 오갈 수 있어요.</p></div>
             </details>
             <details>
               <summary>배경음악은 어떻게 넣나요?</summary>

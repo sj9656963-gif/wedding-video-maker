@@ -47,7 +47,7 @@ try {
   console.log('테스트 사진 생성 중…');
   const specs = await generateFixtures(page, fixDir);
   await page.reload();
-  await page.waitForSelector('#theme-list .theme-card');
+  await page.waitForSelector('#theme-list .theme-card', { state: 'attached' });
   check('스타일 17종 표시', (await page.locator('#theme-list .theme-card').count()) === 17);
   check('지원 경고 없음', await page.locator('#support-warning').isHidden());
   await page.screenshot({ path: out('01-initial.png'), fullPage: true });
@@ -81,13 +81,20 @@ try {
   ]);
   check('EXIF 회전 사진이 세로로 보정됨', rotatedDims[1] > rotatedDims[0], rotatedDims.join('x'));
 
-  // ── 문구 입력 ──
+  // ── 문구 입력 (단계 표시줄로 각 단계를 그 자리에 열어서) ──
+  const go = async (step) => {
+    await page.click(`#fb-${step}`);
+    await page.waitForTimeout(200);
+  };
+  await go('text');
   await page.fill('#f-groom', '김민준');
   await page.fill('#f-bride', '이서연');
   await page.fill('#f-date', '2026-10-24');
   await page.fill('#f-time', '13:30');
   await page.fill('#f-venue', '더채플 청담 3층 그랜드홀');
+  await go('style');
   await page.click(`label.theme-card:has(input[value="${THEME}"])`);
+  await go('sound');
   await page.locator('#duration-options .chip', { hasText: new RegExp(`^${DURATION_LABEL}$`) }).click();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(1200);
@@ -118,20 +125,25 @@ try {
   };
   const themes = SKIP_THEMES ? [THEME] : ['classic', 'romantic', 'modern', 'film'];
   for (const th of themes) {
+    await go('style');
     await page.click(`label.theme-card:has(input[value="${th}"])`);
     await page.waitForTimeout(1500);
     await seekPreview(4.5);
     await shotPreview(`preview-${th}-1-intro.png`);
+    await go('photos');
     await clickPhoto(byKind('L', 3).file);
     await shotPreview(`preview-${th}-2-landscape.png`);
     await clickPhoto(byKind('P', 0).file);
     await shotPreview(`preview-${th}-3-pair.png`);
+    await go('text');
     await page.focus('#f-outro-message');
     await page.waitForTimeout(900);
     await shotPreview(`preview-${th}-4-outro.png`);
   }
+  await go('style');
   await page.click(`label.theme-card:has(input[value="${THEME}"])`);
   await page.waitForTimeout(800);
+  await go('photos');
   await clickPhoto(byKind('S').file);
   await shotPreview('preview-square.png');
   await clickPhoto(rotated.file);
@@ -149,7 +161,14 @@ try {
   await page.click('#btn-play');
   check('미리보기 재생 시 시간이 흐름', playT > 21 && playT < 26, `20초 → ${playT.toFixed(2)}초`);
 
-  // ── MP4 만들기 ──
+  // ── MP4 만들기 (5단계: 고른 내용 확인 → 만들기) ──
+  await go('export');
+  const review = await page.$$eval('#review li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  check(
+    '만들기 단계에 고른 내용 한눈에 (사진·스타일·문구·음악)',
+    review.length === 4 && review[0].includes('40장') && review[2].includes('김민준 ♥ 이서연') && review[3].includes('3:00'),
+    review.join(' / '),
+  );
   await page.selectOption('#f-quality', QUALITY);
   const estimate = (await page.textContent('#export-estimate')) ?? '';
   console.log('예상:', estimate);

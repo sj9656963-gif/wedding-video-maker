@@ -35,6 +35,12 @@ const saveCanvas = async (p, selector, name) => {
   const url = await p.$eval(selector, (c) => c.toDataURL('image/png'));
   fs.writeFileSync(out(name), Buffer.from(url.split(',')[1], 'base64'));
 };
+/** 만들기 단계를 엶 (이미 열려 있으면 그대로) */
+const goStep = async (p, step) => {
+  if ((await p.evaluate(() => window.__wvm.step())) === step) return;
+  await p.click(`#fb-${step}`);
+  await p.waitForTimeout(300);
+};
 
 try {
   await page.goto(`${server.resolvedUrls.local[0]}?e2e`);
@@ -96,6 +102,7 @@ try {
 
   // ── 스타일 예시 영상 ──
   if (!only || only === 'demo') {
+    await goStep(page, 'style');
     await page.evaluate(() => window.__wvm.demoPause());
     for (const th of THEME_LIST) {
       await page.click(`label.theme-card:has(input[value="${th}"])`);
@@ -120,6 +127,7 @@ try {
 
   // ── 꾸미기: 새 효과·테두리·필터·전환·장식·글씨체를 예시 영상으로 ──
   if (!only || only === 'custom') {
+    await goStep(page, 'style');
     await page.evaluate(() => window.__wvm.demoPause());
     await page.click('label.theme-card:has(input[value="classic"])');
     await page.waitForTimeout(500);
@@ -171,18 +179,21 @@ try {
 
   // ── 클래식 양식 전부 (세부 설정 화면 + 예시 영상 장면) ──
   if (!only || only === 'classic') {
+    await goStep(page, 'style');
     await page.evaluate(() => window.__wvm.demoPause());
     const card = 'label.theme-card:has(input[value="classic"])';
     if ((await page.evaluate(() => window.__wvm.theme().id)) !== 'classic') await page.click(card);
     if (!(await page.evaluate(() => window.__wvm.detailOpen()))) await page.click(card);
     await page.waitForTimeout(2500);
     await page.screenshot({ path: out('ui-pc-detail.png') });
+    await page.click('#czt-variant');
     await page.evaluate(() => document.querySelector('#variant-list')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await page.waitForTimeout(1500);
     await page.screenshot({ path: out('ui-pc-detail-variants.png') });
-    await page.evaluate(() => document.querySelector('#czp-opening')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.click('#czt-opening');
     await page.waitForTimeout(1500);
     await page.screenshot({ path: out('ui-pc-detail-custom.png') });
+    await page.click('#czt-variant');
     const vids = await page.$$eval('#variant-list input', (els) => els.map((e) => e.value));
     for (const v of vids) {
       await page.click(`label.variant-card:has(input[value="${v}"])`);
@@ -210,6 +221,7 @@ try {
   if (!only || only === 'video') {
     await page.setInputFiles('#file-input', specs.map((s) => path.join(fixDir, s.file)));
     await page.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''));
+    await goStep(page, 'text');
     await page.fill('#f-groom', '김민준');
     await page.fill('#f-bride', '이서연');
     await page.fill('#f-date', '2026-10-24');
@@ -220,6 +232,7 @@ try {
       await page.evaluate((caps) => window.__wvm.setCaptions((i) => caps[i % caps.length]), CAPTIONS);
       await page.waitForTimeout(900);
     }
+    await goStep(page, 'style');
     const suffix = withCaptions ? '-cap' : '';
     const seek = async (t) => {
       await page.evaluate((t) => {
@@ -240,6 +253,7 @@ try {
       await page.waitForTimeout(1200);
       if (variant) {
         if (!(await page.evaluate(() => window.__wvm.detailOpen()))) await page.click(card);
+        if ((await page.evaluate(() => window.__wvm.czPanel())) !== 'variant') await page.click('#czt-variant');
         await page.click(`label.variant-card:has(input[value="${variant}"])`);
         await page.waitForTimeout(1200);
       }
@@ -283,6 +297,9 @@ try {
     const coarse = await m.evaluate(() => matchMedia('(hover: none) and (pointer: coarse)').matches);
     console.log('mobile coarse pointer:', coarse);
     await m.screenshot({ path: out('mobile-top.png') });
+    await m.evaluate(() => document.querySelector('#steps')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    await m.screenshot({ path: out('mobile-step-photos.png') });
+    await goStep(m, 'style');
     await m.locator('#style-stage').scrollIntoViewIfNeeded();
     await m.waitForTimeout(800);
     await m.screenshot({ path: out('mobile-style.png') });
@@ -295,9 +312,13 @@ try {
     await m.locator('label.theme-card:has(input[value="lovely"])').tap();
     await m.waitForTimeout(1600);
     await m.screenshot({ path: out('mobile-detail.png') });
-    await m.evaluate(() => document.querySelector('#cz-tabs')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
-    await m.waitForTimeout(800);
+    // 오프닝·문구 탭: 디자인 줄 바로 아래에서 문구
+    await m.locator('#czt-opening').tap();
+    await m.waitForTimeout(1500);
     await m.screenshot({ path: out('mobile-detail-custom.png') });
+    await m.locator('#czt-color').tap();
+    await m.waitForTimeout(800);
+    await m.screenshot({ path: out('mobile-detail-color.png') });
     await m.locator('#sd-done').scrollIntoViewIfNeeded();
     await m.locator('#sd-done').tap();
     await m.waitForTimeout(600);
@@ -347,6 +368,7 @@ try {
     // 스튜디오: 사진 올리기 → 목록 → 사진을 누르면 편집 창
     await m.setInputFiles('#file-input', specs.slice(0, 14).map((s) => path.join(fixDir, s.file)));
     await m.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''));
+    await goStep(m, 'photos');
     await m.locator('#photo-grid').scrollIntoViewIfNeeded();
     await m.waitForTimeout(500);
     await m.screenshot({ path: out('mobile-studio-grid.png') });
@@ -360,8 +382,8 @@ try {
     await m.locator('#pe-close').tap();
     await m.waitForTimeout(500);
     await m.screenshot({ path: out('mobile-studio-grid-cap.png') });
-    // 떠 있는 미리보기 버튼 → 미리보기 창 (위에 붙은 미리보기가 밀려 올라간 음악 카드 쪽에서. 미리보기가 보이는 동안은 버튼을 숨김)
-    await m.evaluate(() => document.querySelector('#h-music')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    // 떠 있는 미리보기 버튼 → 미리보기 창 (위쪽 미리보기가 없는 음악·길이 단계에서)
+    await goStep(m, 'sound');
     await m.waitForTimeout(700);
     console.log('mobile fab visible:', await m.locator('#preview-fab').isVisible());
     await m.screenshot({ path: out('mobile-fab.png') });

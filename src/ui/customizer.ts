@@ -1,4 +1,5 @@
-// 꾸미기: 오프닝 디자인·글씨체·색감·효과·전환을 직접 고르는 탭 화면.
+// 세부 설정의 항목 탭: 양식(목록은 style-picker.ts)·오프닝과 문구·글씨체·색감·효과·전환.
+// 탭 줄은 세부 설정 머리줄과 함께 화면 위에 붙어 있고, 탭을 바꾸면 내용만 그 자리에서 바뀜.
 // 고르면 바로 적용되고(onChange), 마우스를 올려 두면 적용하기 전에 미리 보여 줌(onPreview).
 
 import type { DemoFocus } from '../demo';
@@ -35,7 +36,7 @@ import {
 } from '../themes';
 import { $, h } from './dom';
 
-type Panel = 'opening' | 'font' | 'color' | 'effect' | 'motion';
+export type Panel = 'variant' | 'opening' | 'font' | 'color' | 'effect' | 'motion';
 type Kind = 'chips' | 'swatch' | 'designs' | 'filters' | 'fonts';
 
 interface Group {
@@ -166,14 +167,24 @@ export interface CustomizerOptions {
   onPreview?: (custom: Customization | null, key: CustomKey | null) => void;
   /** 오프닝 디자인 카드 그림 */
   designPoster?: (design: TitleDesign, width: number, height: number) => string;
+  /** 마지막 탭에서 '다음'을 누름 (다음 단계로) */
+  onFinish?: () => void;
+  /** 마지막 탭의 '다음' 버튼 이름 */
+  finishLabel?: string;
+  /** 사용자가 탭을 바꿈 (미리보기를 그 항목이 보이는 장면으로) */
+  onPanel?: (panel: Panel) => void;
+  /** 화면 아래쪽에 붙어 가리는 높이 (휴대폰의 단계 표시줄) */
+  bottomInset?: () => number;
 }
 
 const canHover = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const idle = () => new Promise<void>((r) => setTimeout(r, 0));
+/** 화면 이동 없이 바로 (html의 부드러운 스크롤 설정을 무시) */
+const INSTANT = 'instant' as ScrollBehavior;
 
 export class Customizer {
   custom: Customization;
-  private panel: Panel = 'opening';
+  private panel: Panel = 'variant';
   private fontsRequested = false;
   private readonly tabs = new Map<Panel, HTMLButtonElement>();
   private readonly panels = new Map<Panel, HTMLElement>();
@@ -183,6 +194,11 @@ export class Customizer {
   private readonly rolePanes = new Map<FontRole, HTMLElement>();
   private readonly countEl = $('cz-count');
   private readonly resetBtn = $<HTMLButtonElement>('cz-reset');
+  private readonly tabRow = $('cz-tabs');
+  private readonly bodyEl = $('custom-card');
+  private readonly headEl = document.querySelector<HTMLElement>('#style-detail .sd-head');
+  private readonly tabPrev = $<HTMLButtonElement>('sd-tab-prev');
+  private readonly tabNext = $<HTMLButtonElement>('sd-tab-next');
   private hoverTimer: ReturnType<typeof setTimeout> | undefined;
   private hovering = false;
   private posterJob = 0;
@@ -192,19 +208,45 @@ export class Customizer {
 
   constructor(private readonly opts: CustomizerOptions) {
     this.custom = sanitizeCustom(opts.initial);
-    for (const tab of document.querySelectorAll<HTMLButtonElement>('#cz-tabs [role="tab"]')) {
+    for (const tab of this.tabRow.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
       const id = tab.dataset.panel as Panel;
       this.tabs.set(id, tab);
       const panel = $(`czp-${id}`);
       this.panels.set(id, panel);
-      tab.addEventListener('click', () => this.showPanel(id));
-      tab.addEventListener('keydown', (e) => this.tabKeys(e, [...this.tabs.keys()], id, (p) => this.showPanel(p, true)));
+      tab.addEventListener('click', () => this.showPanel(id, false, true));
+      tab.addEventListener('keydown', (e) => this.tabKeys(e, [...this.tabs.keys()], id, (p) => this.showPanel(p, true, true)));
     }
     for (const g of GROUPS) this.buildGroup(g);
     this.buildFonts();
+    // 문구 칸은 오프닝 디자인 바로 아래 (디자인을 고르고 그 자리에서 이름·제목을 써 봄)
+    const text = document.getElementById('cz-text');
+    const designs = this.panels.get('opening')?.querySelector('[data-opt="title"]');
+    if (text && designs) designs.after(text);
     this.resetBtn.addEventListener('click', () => this.reset());
+    this.tabPrev.addEventListener('click', () => this.stepPanel(-1));
+    this.tabNext.addEventListener('click', () => this.stepPanel(1));
     this.refresh();
-    this.showPanel('opening');
+    this.showPanel('variant');
+  }
+
+  /** 지금 보이는 탭 */
+  get current(): Panel {
+    return this.panel;
+  }
+
+  /** 탭을 엶 (세부 설정을 새로 열 때 '양식'으로 등) */
+  show(id: Panel): void {
+    this.showPanel(id);
+  }
+
+  /** 되돌리기 등으로 꾸미기 값을 통째로 바꿈 (onChange 없이) */
+  setCustom(custom: Customization): void {
+    clearTimeout(this.hoverTimer);
+    this.hovering = false;
+    this.custom = sanitizeCustom(custom);
+    this.sync();
+    this.postersDirty = true;
+    if (this.panel === 'opening' && this.visible) void this.renderPosters();
   }
 
   /** 스타일·양식이 바뀌었을 때 '추천' 이름과 오프닝 카드 그림을 다시 */
@@ -268,21 +310,73 @@ export class Customizer {
     go(ids[next]);
   }
 
-  private showPanel(id: Panel, focus = false): void {
+  /** 탭 바꾸기. user = 사용자가 탭·이전/다음 항목을 누름 (내용이 머리줄 바로 아래부터 보이게 맞춤) */
+  private showPanel(id: Panel, focus = false, user = false): void {
     this.panel = id;
     for (const [p, tab] of this.tabs) {
       const on = p === id;
       tab.setAttribute('aria-selected', String(on));
       tab.tabIndex = on ? 0 : -1;
       this.panels.get(p)!.hidden = !on;
-      if (on && focus) tab.focus();
+      if (on && focus) tab.focus({ preventScroll: true });
     }
+    this.bodyEl.dataset.panel = id;
+    this.syncSteps();
+    this.revealTab();
     if (id === 'font' && !this.fontsRequested) {
       // 글씨체 미리보기용 글꼴 등록 (처음 열 때 한 번)
       this.fontsRequested = true;
       void loadAllFontCss();
     }
     if (id === 'opening' && this.postersDirty && this.visible) void this.renderPosters();
+    if (user) {
+      this.settle();
+      this.opts.onPanel?.(id);
+    }
+  }
+
+  /** 아래쪽 '이전 항목 · 다음 항목' (마지막 탭에서는 다음 단계로) */
+  private stepPanel(dir: 1 | -1): void {
+    const ids = [...this.tabs.keys()];
+    const next = ids[ids.indexOf(this.panel) + dir];
+    if (next) this.showPanel(next, false, true);
+    else if (dir > 0) this.opts.onFinish?.();
+  }
+
+  private syncSteps(): void {
+    const ids = [...this.tabs.keys()];
+    const i = ids.indexOf(this.panel);
+    const name = (p: Panel | undefined) => (p ? (this.tabs.get(p)?.dataset.name ?? '') : '');
+    const prev = ids[i - 1];
+    const next = ids[i + 1];
+    this.tabPrev.hidden = !prev;
+    $('sd-tab-prev-l').textContent = prev ? name(prev) : '';
+    $('sd-tab-next-l').textContent = next ? `다음: ${name(next)}` : (this.opts.finishLabel ?? '다 골랐어요');
+    this.tabNext.hidden = !next && !this.opts.onFinish;
+  }
+
+  /** 탭 줄이 옆으로 넘칠 때(휴대폰) 고른 탭이 보이게 (화면 위아래는 움직이지 않음) */
+  private revealTab(): void {
+    const tab = this.tabs.get(this.panel);
+    const row = this.tabRow;
+    if (!tab || row.scrollWidth <= row.clientWidth) return;
+    const r = tab.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    if (r.left < rr.left) row.scrollLeft -= rr.left - r.left + 16;
+    else if (r.right > rr.right) row.scrollLeft += r.right - rr.right + 16;
+  }
+
+  /**
+   * 내용을 보며 내려와 있었으면 새 탭의 처음이 위에 붙은 머리줄 바로 아래에 오게 (오르내릴 필요 없이).
+   * 기준은 머리줄이 붙는 자리 (짧은 탭으로 바뀌면 머리줄이 상자와 함께 화면 밖으로 밀려나 있을 수 있음)
+   */
+  private settle(): void {
+    if (!this.headEl) return;
+    const line = (parseFloat(getComputedStyle(this.headEl).top) || 0) + this.headEl.offsetHeight;
+    const top = this.bodyEl.getBoundingClientRect().top;
+    // 새 내용이 화면 아래쪽(휴대폰은 아래 단계 표시줄 위)에 조금밖에 안 보이면 머리줄이 붙는 자리까지 올림
+    const low = window.innerHeight - (this.opts.bottomInset?.() ?? 0) - 240;
+    if (top < line - 1 || top > Math.max(line, low)) window.scrollBy({ top: top - line, behavior: INSTANT });
   }
 
   private showRole(role: FontRole, focus = false): void {
@@ -482,6 +576,7 @@ export class Customizer {
     const n = customCount(this.custom);
     this.countEl.textContent = n ? `직접 꾸민 항목 ${n}개` : '지금은 스타일 기본값이에요';
     this.resetBtn.hidden = n === 0;
+    this.countEl.closest('.cz-state')?.classList.toggle('is-default', n === 0);
   }
 
   /** 오프닝 디자인 카드에 그 디자인으로 만든 작은 그림을 채움 (보일 때만, 조금씩) */

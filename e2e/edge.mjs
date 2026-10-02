@@ -67,10 +67,15 @@ page.on('dialog', (d) => d.accept());
 
 const labels = () => page.$$eval('#photo-grid li.photo .open', (els) => els.map((e) => /(\w+\.\w+)/.exec(e.getAttribute('aria-label') ?? '')?.[1]));
 const summary = async () => (await page.textContent('#timeline-summary')) ?? '';
+/** 만들기 단계 열기 (단계 표시줄) */
+const go = async (step) => {
+  await page.click(`#fb-${step}`);
+  await page.waitForTimeout(200);
+};
 
 try {
   await page.goto(url);
-  await page.waitForSelector('#theme-list .theme-card');
+  await page.waitForSelector('#theme-list .theme-card', { state: 'attached' });
 
   // ── 제작자 문구 · 스타일 예시 영상 ──
   const creator = '제작자 : 부산북구 주양현';
@@ -130,10 +135,11 @@ try {
   await page.waitForTimeout(900);
   const picked = await page.evaluate(() => window.__wvm.theme().id);
   const checkedCard = await page.$eval('#theme-list input[name="theme"]:checked', (e) => e.value);
+  const pickedStep = await page.evaluate(() => window.__wvm.step());
   check(
-    '쇼케이스 카드 17장 · 누르면 그 스타일 선택',
-    ringCount === 17 && front2 === target && picked === target && checkedCard === target && target !== themeBefore,
-    `${ringCount}장, ${themeBefore} → ${picked} (앞 카드 ${front2})`,
+    '쇼케이스 카드 17장 · 누르면 그 스타일 선택 (스타일 단계가 열림)',
+    ringCount === 17 && front2 === target && picked === target && checkedCard === target && target !== themeBefore && pickedStep === 'style',
+    `${ringCount}장, ${themeBefore} → ${picked} (앞 카드 ${front2}), 단계 ${pickedStep}`,
   );
   await page.locator('#style-stage').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => window.__wvm.demoPlaying(), null, { timeout: 10000 }).catch(() => undefined);
@@ -204,6 +210,7 @@ try {
   const base = specs.slice(0, 12).map((s) => path.join(fixDir, s.file));
   await page.setInputFiles('#file-input', base);
   await page.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''));
+  await go('photos');
   const before = await labels();
   await page.click('#photo-grid li.photo:nth-child(1) button[data-act="right"]', { force: true });
   const after = await labels();
@@ -256,6 +263,7 @@ try {
   const total = await page.locator('#photo-grid li.photo').count();
   // 기존 11장은 중복으로 건너뛰고, 앞에서 뺀 1장은 다시 추가됨 → 11 + 29 + 60 = 100
   check('중복 사진은 건너뜀', total === 100 && /이미 있는 사진 11장/.test((await page.textContent('#import-status')) ?? ''), `총 ${total}장`);
+  await go('sound');
   await page.locator('#duration-options .chip', { hasText: /^3분$/ }).click();
   // 여러 장 모아 보기(기본 켜짐)면 한 화면에 여러 장이 들어가 100장도 3분에 담김
   check(
@@ -263,9 +271,11 @@ try {
     (await page.locator('#timeline-error').isHidden()) && (await page.locator('#photo-grid li.photo.unused').count()) === 0,
     await summary(),
   );
-  // 한 장씩 보여주면 3분에는 다 못 넣음 ('여러 장 모아 보기'는 꾸미기 '전환 · 연출' 탭)
+  // 한 장씩 보여주면 3분에는 다 못 넣음 ('여러 장 모아 보기'는 스타일 세부 설정 '전환 · 연출' 탭)
+  await go('style');
   await page.click('#czt-motion');
   await page.uncheck('#f-group');
+  await go('sound');
   const warnVisible = await page.locator('#timeline-error').isVisible();
   const unused = await page.locator('#photo-grid li.photo.unused').count();
   const warnText = (await page.textContent('#timeline-error')) ?? '';
@@ -273,9 +283,11 @@ try {
   await page.screenshot({ path: out('edge-too-many.png'), fullPage: false });
   await page.locator('#duration-options .chip', { hasText: /^5분$/ }).click();
   check('5분으로 늘리면 모두 들어감', (await page.locator('#timeline-error').isHidden()) && (await page.locator('#photo-grid li.photo.unused').count()) === 0, await summary());
+  await go('style');
   await page.check('#f-group');
 
   // ── 모두 지우기 ──
+  await go('photos');
   await page.click('#btn-clear');
   check('모두 지우기', (await page.locator('#photo-grid li.photo').count()) === 0 && (await page.isDisabled('#btn-export')));
 
@@ -287,6 +299,7 @@ try {
   const musicStatus = (await page.textContent('#music-status')) ?? '';
   check('내 음악 불러오기 (앞뒤 무음 제외 3:18)', /총 3:1[78]/.test(musicStatus), musicStatus);
   check('내 음악 선택으로 전환', await page.isChecked('input[name="music"][value="custom"]'));
+  await go('sound');
   const fitChip = page.locator('#duration-options .chip', { hasText: '음악 길이에 맞춤' });
   check('음악 길이에 맞춤 옵션 표시', (await fitChip.count()) === 1);
   await fitChip.click();
@@ -295,6 +308,7 @@ try {
   const fitSec = m ? Number(m[1]) * 60 + Number(m[2]) : 0;
   check('영상 길이 = 음악 길이', fitSec >= 197 && fitSec <= 199, s);
 
+  await go('export');
   await page.selectOption('#f-quality', '720p');
   await page.click('#btn-export');
   await page.waitForSelector('#export-result:not([hidden]), #export-error:not([hidden])', { timeout: 20 * 60 * 1000 });

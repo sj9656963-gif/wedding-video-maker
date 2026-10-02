@@ -71,6 +71,18 @@ const saveCanvas = async (p, sel, name) => {
   const data = await p.$eval(sel, (c) => c.toDataURL('image/png'));
   fs.writeFileSync(out(name), Buffer.from(data.split(',')[1], 'base64'));
 };
+/** 만들기 단계 열기 (PC는 위쪽, 휴대폰은 아래쪽 단계 표시줄) */
+const go = async (p, step) => {
+  await p.click(`#fb-${step}`);
+  await p.waitForTimeout(250);
+};
+/** 세부 설정 머리줄(위에 붙음)과 그 아래 내용의 시작 */
+const headAndBody = (p) =>
+  p.evaluate(() => {
+    const head = document.querySelector('.sd-head').getBoundingClientRect();
+    const body = document.querySelector('#custom-card').getBoundingClientRect();
+    return { headTop: Math.round(head.top), headBottom: Math.round(head.bottom), bodyTop: Math.round(body.top) };
+  });
 
 try {
   // ───────────── PC (1440×900) ─────────────
@@ -81,6 +93,27 @@ try {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => window.__wvm?.demoReady(), null, { timeout: 30000 });
+  // 처음엔 1단계(사진)만 이 자리에 있고, 단계 표시줄로 바로 다른 단계를 엶
+  const startStep = await page.evaluate(() => ({
+    step: window.__wvm.step(),
+    visible: [...document.querySelectorAll('.step')].filter((s) => !s.hidden).map((s) => s.dataset.step),
+  }));
+  check('처음엔 사진 단계만 보임', startStep.step === 'photos' && startStep.visible.join() === 'photos', JSON.stringify(startStep));
+  await page.evaluate(() => document.querySelector('#steps').scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await page.evaluate(() => window.scrollBy({ top: 200, behavior: 'instant' }));
+  const barBefore = (await page.locator('#flow-bar').boundingBox()).y;
+  await page.click('#fb-next');
+  await page.waitForTimeout(300);
+  const inPlace = await page.evaluate(() => {
+    const bar = document.querySelector('#flow-bar').getBoundingClientRect();
+    const h = document.querySelector('#h-style').getBoundingClientRect();
+    return { step: window.__wvm.step(), barTop: Math.round(bar.top), barBottom: Math.round(bar.bottom), headingTop: Math.round(h.top) };
+  });
+  check(
+    "PC: '다음'을 누르면 다음 단계가 그 자리에 (단계 표시줄 바로 아래부터)",
+    inPlace.step === 'style' && Math.abs(inPlace.barTop - barBefore) <= 2 && inPlace.headingTop >= inPlace.barBottom && inPlace.headingTop <= inPlace.barBottom + 60,
+    JSON.stringify(inPlace),
+  );
   // 스타일 카드 목록 맨 아래까지 내려가도 미리보기가 오른쪽에 그대로 보임
   await page.evaluate(() => document.querySelector('#theme-list .theme-card:last-child')?.scrollIntoView({ block: 'end', behavior: 'instant' }));
   await page.waitForTimeout(500);
@@ -133,16 +166,22 @@ try {
   await page.click('label.theme-card:has(input[value="lovely"])');
   await page.waitForTimeout(700);
 
-  // 꾸미기 (카드 아래쪽 탭까지 내려가도 미리보기가 보임)
+  // 꾸미기 (카드 아래쪽 탭까지 내려가도 미리보기가 보임). 긴 탭(글씨체)을 보며 내려가도 머리줄은 위에 붙어 있음
+  await page.click('#czt-font');
   await page.evaluate(() => document.querySelector('#custom-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
-  await page.evaluate(() => window.scrollBy(0, 500));
+  await page.evaluate(() => window.scrollBy({ top: 500, behavior: 'instant' }));
   await page.waitForTimeout(300);
   const head = await page.$eval('.sd-head', (el) => {
     const r = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + r.width - 30, r.top + r.height / 2);
-    return { top: Math.round(r.top), bottom: Math.round(r.bottom), onTop: !!hit && el.contains(hit) };
+    const bar = document.querySelector('#flow-bar').getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width - 30, r.top + 20);
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), barBottom: Math.round(bar.bottom), onTop: !!hit && el.contains(hit) };
   });
-  check("PC: 꾸미기를 보다가도 '이전·다음 스타일·접기'가 위에 붙어 있음", head.top >= 70 && head.top <= 100 && head.onTop, JSON.stringify(head));
+  check(
+    "PC: 꾸미기를 보다가도 '이전·다음 스타일·접기'와 항목 탭이 단계 표시줄 바로 아래에 붙어 있음",
+    head.top >= head.barBottom && head.top <= head.barBottom + 14 && head.onTop,
+    JSON.stringify(head),
+  );
   await page.evaluate(() => document.querySelector('#custom-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
   await page.click('#czt-font');
   await page.click('#fr-name');
@@ -188,6 +227,7 @@ try {
   check('꾸미기가 새로고침 뒤에도 유지', t3.id === 'lovely' && t3.custom.fontName === 'Gaegu' && t3.custom.transition === 'clock', JSON.stringify(t3.custom));
   // 새로 열면 카드 목록이 다 보이게 접혀 있고, 고른 카드를 누르면 바로 아래에 열림
   const closedAtStart = !(await page.evaluate(() => window.__wvm.detailOpen()));
+  await go(page, 'style');
   await page.click('label.theme-card:has(input[value="lovely"])');
   await page.waitForTimeout(500);
   const d4 = await detailAt(page, 'lovely');
@@ -196,8 +236,76 @@ try {
   const t4 = await page.evaluate(() => window.__wvm.theme());
   check('모두 스타일 기본으로 되돌리기', Object.keys(t4.custom).length === 0 && (await page.locator('#cz-reset').isHidden()), JSON.stringify(t4.custom));
 
-  // 예시 문구 칩
-  await page.evaluate(() => document.querySelector('#text-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  // 오프닝 디자인을 고른 그 자리에서 문구까지 (스크롤 없이), 3단계 문구 칸과 서로 연동
+  const tabBefore = await page.evaluate(() => window.__wvm.czPanel());
+  await page.click('#czt-opening');
+  await page.waitForTimeout(300);
+  const tabAlign = await headAndBody(page);
+  await page.click('#title-options button[data-value="arch"]');
+  await page.waitForTimeout(500);
+  const fiView = await inViewport(page, '#fi-groom');
+  const fiDate = await inViewport(page, '#fi-date');
+  check(
+    'PC: 세부 설정을 새로 열면 양식부터, 오프닝 탭을 누르면 디자인 바로 아래에 이름·날짜 칸이 화면 안에',
+    tabBefore === 'variant' && (await page.evaluate(() => window.__wvm.theme().title)) === 'arch' && fiView.ok && fiDate.ok,
+    `${tabBefore}, ${JSON.stringify(tabAlign)}, 이름 ${JSON.stringify(fiView)}, 날짜 ${JSON.stringify(fiDate)}`,
+  );
+  await page.fill('#fi-groom', '박지훈');
+  await page.fill('#fi-intro-title', 'Our Day');
+  await page.waitForTimeout(700);
+  const demoAt = await page.evaluate(() => window.__wvm.demoTime());
+  const marks = (await page.evaluate(() => window.__wvm.demoInfo())).marks;
+  check(
+    '오프닝 탭에서 쓴 문구가 3단계 칸에도 그대로 · 예시 영상은 오프닝 장면',
+    (await page.inputValue('#f-groom')) === '박지훈' && (await page.inputValue('#f-intro-title')) === 'Our Day' && Math.abs(demoAt - marks.intro) < 1.2,
+    `${await page.inputValue('#f-groom')}, ${demoAt.toFixed(2)}초 (오프닝 ${marks.intro})`,
+  );
+  await page.screenshot({ path: out('live-pc-opening-text.png') });
+  await page.click('#ct-outro');
+  await page.waitForTimeout(400);
+  const outroAt = await page.evaluate(() => window.__wvm.demoTime());
+  check("'엔딩'으로 바꾸면 엔딩 문구 칸 · 예시 영상은 엔딩 장면", (await page.isVisible('#fi-outro-message')) && Math.abs(outroAt - marks.outro) < 1.2, `${outroAt.toFixed(2)}초 (엔딩 ${marks.outro})`);
+  await page.click('#ct-intro');
+  // 아래쪽 '다음 항목'으로 탭을 차례로: 새 탭 내용은 위에 붙은 머리줄 바로 아래부터
+  await page.locator('#sd-tab-next').scrollIntoViewIfNeeded();
+  await page.click('#sd-tab-next');
+  await page.waitForTimeout(300);
+  const nextTab = await headAndBody(page);
+  const nowTab = await page.evaluate(() => window.__wvm.czPanel());
+  check("'다음 항목'은 다음 탭을 그 자리에 (머리줄 바로 아래부터)", nowTab === 'font' && Math.abs(nextTab.bodyTop - nextTab.headBottom) <= 3, `${nowTab} ${JSON.stringify(nextTab)}`);
+  // 되돌리기: 방금 바꾼 꾸미기 → 스타일 순서로 하나씩
+  await page.click('#czt-color');
+  await page.click('button.chip[data-key="filter"][data-value="golden"]');
+  const themeNow = await page.evaluate(() => window.__wvm.theme().id);
+  await page.click('#sd-next');
+  await page.waitForTimeout(400);
+  const themeNext = await page.evaluate(() => window.__wvm.theme().id);
+  await page.click('#sd-undo');
+  await page.waitForTimeout(300);
+  const u1 = await page.evaluate(() => window.__wvm.theme());
+  await page.click('#sd-undo');
+  await page.waitForTimeout(300);
+  const u2 = await page.evaluate(() => window.__wvm.theme());
+  check(
+    "'되돌리기'로 방금 바꾼 스타일 → 꾸미기 순서로 취소",
+    themeNext !== themeNow && u1.id === themeNow && u1.custom.filter === 'golden' && u2.id === themeNow && !u2.custom.filter && (await page.evaluate(() => window.__wvm.detailOpen())),
+    `${themeNow} → ${themeNext} → ${u1.id}(${u1.custom.filter}) → ${u2.id}(${u2.custom.filter ?? '-'})`,
+  );
+  // 마지막 탭의 '다 골랐어요 · 다음: 문구 입력' → 3단계가 그 자리에
+  await page.click('#czt-motion');
+  await page.locator('#sd-tab-next').scrollIntoViewIfNeeded();
+  const finishLabel = ((await page.textContent('#sd-tab-next')) ?? '').trim();
+  await page.click('#sd-tab-next');
+  await page.waitForTimeout(300);
+  const fin = await page.evaluate(() => ({ step: window.__wvm.step(), top: Math.round(document.querySelector('#h-text').getBoundingClientRect().top) }));
+  check("마지막 탭에서 '다 골랐어요 · 다음: 문구 입력' → 문구 단계", fin.step === 'text' && fin.top > 60 && fin.top < 400 && finishLabel.includes('문구 입력'), `${finishLabel} → ${JSON.stringify(fin)}`);
+  await page.fill('#f-bride', '최유나');
+  await go(page, 'style');
+  const backInPanel = await page.evaluate(() => ({ open: window.__wvm.detailOpen(), bride: document.querySelector('#fi-bride').value }));
+  check('3단계에서 쓴 이름이 오프닝 탭 칸에도 · 스타일 단계로 돌아오면 세부 설정 그대로', backInPanel.open && backInPanel.bride === '최유나', JSON.stringify(backInPanel));
+
+  // 예시 문구 칩 (3단계)
+  await go(page, 'text');
   const chip = page.locator('#sg-intro-title .sg-chip').first();
   const chipText = (await chip.getAttribute('title')) ?? '';
   await chip.click();
@@ -226,6 +334,7 @@ try {
   await page.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''), null, { timeout: 60000 });
   await page.waitForTimeout(600);
   check("사진을 올리면 미리보기가 '내 영상'으로", (await page.evaluate(() => window.__wvm.liveTab())) === 'mine' && (await page.locator('#preview').isVisible()));
+  await go(page, 'style');
   await page.evaluate(() => document.querySelector('#custom-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
   await page.click('#czt-color');
   await page.click('button.chip[data-key="filter"][data-value="mono"]');
@@ -254,6 +363,17 @@ try {
     return { open: window.__wvm.detailOpen(), top: Math.round(r.top), bottom: Math.round(r.bottom), vh: window.innerHeight };
   });
   check("PC: '다 골랐어요'를 누르면 접히고 고른 카드가 화면 안에", !done.open && done.top >= 60 && done.bottom <= done.vh, JSON.stringify(done));
+  // 5단계: 고른 내용 한눈에 → '바꾸기'를 누르면 그 단계가 그 자리에
+  await go(page, 'export');
+  const rv = await page.$$eval('#review li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  await page.click('#review button[data-go="text"]');
+  await page.waitForTimeout(300);
+  const rvStep = await page.evaluate(() => window.__wvm.step());
+  check(
+    "만들기 단계: 고른 내용 4줄 · '바꾸기'로 그 단계로",
+    rv.length === 4 && rv[0].includes('16장') && rv[2].includes('박지훈 ♥ 최유나') && rvStep === 'text',
+    `${rv.join(' / ')} → ${rvStep}`,
+  );
   await page.close();
 
   // ───────────── 휴대폰 (390×844) ─────────────
@@ -262,8 +382,16 @@ try {
   watch(m, 'mobile');
   await m.goto(url);
   await m.waitForFunction(() => window.__wvm?.demoReady(), null, { timeout: 30000 });
+  await m.evaluate(() => document.querySelector('#steps').scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await m.locator('#fb-style').tap();
+  await m.waitForTimeout(300);
   await m.evaluate(() => document.querySelector('#theme-list .theme-card:nth-child(9)')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await m.waitForTimeout(600);
+  const mbar = await m.$eval('#flow-bar', (el) => {
+    const r = el.getBoundingClientRect();
+    return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: window.innerHeight, step: window.__wvm.step() };
+  });
+  check('휴대폰: 단계 표시줄이 화면 아래쪽에 붙어 있음 (엄지로 이전·다음)', mbar.step === 'style' && mbar.bottom <= mbar.vh && mbar.bottom >= mbar.vh - 30 && mbar.bottom - mbar.top <= 64, JSON.stringify(mbar));
   const ms1 = await inViewport(m, '#style-stage');
   check('휴대폰: 스타일 목록 중간에서도 예시 영상이 위쪽에 보임', ms1.ok && ms1.top < 200, JSON.stringify(ms1));
   const stageBox = await m.locator('#live-mobile .live-box').boundingBox();
@@ -297,20 +425,32 @@ try {
   const mt2 = await m.evaluate(() => ({ id: window.__wvm.theme().id, name: document.querySelector('#sd-name').textContent }));
   check("휴대폰: '다음 스타일'로 스크롤 없이 바꿔 보기", mt2.id === 'editorial' && Math.abs(mAfter - mBefore) <= 3, `${JSON.stringify(mt2)}, 위치 ${Math.round(mBefore)} → ${Math.round(mAfter)}`);
   await m.screenshot({ path: out('live-mobile-detail.png') });
-  await m.evaluate(() => document.querySelector('#czp-opening')?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await m.locator('#czt-opening').tap();
   await m.waitForTimeout(400);
   await m.locator('#title-options button[data-value="storybook"]').tap();
   await m.waitForTimeout(600);
   const ms2 = await inViewport(m, '#style-stage');
   const mt = await m.evaluate(() => window.__wvm.theme());
-  check('휴대폰: 오프닝 디자인을 고르면 위쪽에서 바로 확인', mt.title === 'storybook' && ms2.ok, JSON.stringify(ms2));
+  const mText = await m.evaluate(() => {
+    const t = document.querySelector('#cz-text .opt-h').getBoundingClientRect();
+    const bar = document.querySelector('#flow-bar').getBoundingClientRect();
+    return { textTop: Math.round(t.top), barTop: Math.round(bar.top) };
+  });
+  check(
+    '휴대폰: 오프닝 디자인을 고르면 위쪽에서 바로 확인 · 바로 아래에 문구 칸',
+    mt.title === 'storybook' && ms2.ok && mText.textTop > 0 && mText.textTop < mText.barTop - 30,
+    `${JSON.stringify(ms2)} ${JSON.stringify(mText)}`,
+  );
+  // 문구 칸 쪽으로 조금 내려가도 머리줄(스타일 바꾸기 + 탭)은 미리보기 바로 아래에 붙어 있음
+  await m.evaluate(() => window.scrollBy({ top: 240, behavior: 'instant' }));
+  await m.waitForTimeout(300);
   const mhead = await m.evaluate(() => {
     const head = document.querySelector('.sd-head');
     const r = head.getBoundingClientRect();
     const t = head.querySelector('.sd-title').getBoundingClientRect();
     const n = head.querySelector('.sd-nav').getBoundingClientRect();
     const live = document.querySelector('#live-mobile .live-box').getBoundingClientRect();
-    const hit = document.elementFromPoint(r.right - 24, r.top + r.height / 2);
+    const hit = document.elementFromPoint(r.right - 24, r.top + 20);
     return {
       top: Math.round(r.top),
       h: Math.round(r.height),
@@ -320,19 +460,31 @@ try {
       title: head.querySelector('.sd-title').textContent,
     };
   });
-  check('휴대폰: 꾸미기를 보는 동안 세부 설정 머리줄이 미리보기 바로 아래에 붙음 (한 줄)', mhead.onTop && mhead.oneRow && mhead.h <= 64 && mhead.top >= mhead.liveBottom - 1 && mhead.top <= mhead.liveBottom + 16, JSON.stringify(mhead));
+  check('휴대폰: 꾸미기를 보는 동안 세부 설정 머리줄(스타일 바꾸기 한 줄 + 항목 탭)이 미리보기 바로 아래에 붙음', mhead.onTop && mhead.oneRow && mhead.h <= 100 && mhead.top >= mhead.liveBottom - 1 && mhead.top <= mhead.liveBottom + 16, JSON.stringify(mhead));
   await m.screenshot({ path: out('live-mobile-sticky-head.png') });
   await m.screenshot({ path: out('live-mobile-opening.png') });
   await m.locator('#live-collapse').tap();
   const collapsedH = (await m.locator('#live-mobile .live-box').boundingBox())?.height ?? 999;
   check('휴대폰: 미리보기 작게 접기', collapsedH < 80, `${Math.round(collapsedH)}px`);
   await m.locator('#live-collapse').tap();
-  // 음악 카드처럼 미리보기 자리 밖으로 가면 붙어 있지 않음
-  await m.evaluate(() => document.querySelector('#h-music')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
-  await m.waitForTimeout(500);
-  const away = await m.$eval('#style-stage', (el) => el.getBoundingClientRect().bottom);
-  check('휴대폰: 음악 카드에서는 미리보기가 따라오지 않음 (메뉴 뒤로 올라감)', away < 80, `${Math.round(away)}`);
-  await m.evaluate(() => document.querySelector('#text-card')?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  // 음악·길이 단계에서는 위쪽 미리보기가 따라오지 않음 (단계 표시줄의 '다음'으로 그 자리에)
+  await m.locator('#fb-text').tap();
+  await m.waitForTimeout(300);
+  const mTextTop = await m.evaluate(() => ({ step: window.__wvm.step(), h: Math.round(document.querySelector('#h-text').getBoundingClientRect().top) }));
+  await m.locator('#fb-next').tap();
+  await m.waitForTimeout(400);
+  const away = await m.evaluate(() => ({
+    step: window.__wvm.step(),
+    liveHidden: document.querySelector('#live-zone').hidden,
+    stage: Math.round(document.querySelector('#style-stage').getBoundingClientRect().height),
+    h: Math.round(document.querySelector('#h-sound').getBoundingClientRect().top),
+  }));
+  check(
+    "휴대폰: 아래쪽 '다음'으로 다음 단계가 화면 위쪽부터 · 음악·길이에서는 미리보기가 따라오지 않음",
+    mTextTop.step === 'text' && away.step === 'sound' && away.liveHidden && away.stage === 0 && away.h > 60 && away.h < 200,
+    `${JSON.stringify(mTextTop)} ${JSON.stringify(away)}`,
+  );
+  await m.locator('#fb-text').tap();
   await m.waitForTimeout(400);
   await m.screenshot({ path: out('live-mobile-text.png') });
   // 가로 스크롤 없음

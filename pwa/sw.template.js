@@ -79,7 +79,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         } catch {
-          return (await caches.match('./', { ignoreSearch: true })) ?? Response.error();
+          return (await caches.match('./', { ignoreSearch: true, ignoreVary: true })) ?? Response.error();
         }
       })(),
     );
@@ -88,7 +88,9 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     (async () => {
-      const hit = await caches.match(req, { ignoreSearch: true });
+      // 저장본은 이름에 해시가 붙은 파일이라 요청 머리글과 상관없이 같은 내용. 서버가 'Vary: Origin'을 붙이면
+      // (스크립트·스타일 요청에는 Origin이 실림) 저장본을 못 찾아 인터넷 없이 열 때 깨지므로 Vary는 보지 않음
+      const hit = await caches.match(req, { ignoreSearch: true, ignoreVary: true });
       if (hit) return hit;
       const res = await fetch(req);
       if (res.ok && url.pathname.includes('/assets/')) {
