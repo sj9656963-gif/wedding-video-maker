@@ -1058,13 +1058,19 @@ const aiPhotos = $('ai-photos');
 /** 추천 전 설정 ('원래대로') */
 let aiBefore: { themeId: string; variantId: string | null; custom: Customization; durationMode: DurationMode; groupPhotos: boolean; musicMode: 'default' | 'custom' } | null = null;
 let aiStats: { key: string; stats: PhotoStats | null } | null = null;
+/** 지금 추천을 고를 때 본 사진 묶음 (사진이 바뀌면 다시 보자고 안내) */
+let aiPickKey = '';
 const aiPosters = new Map<string, string>();
+const photosKey = () => {
+  const p = state.photos;
+  return p.length ? `${p.length}|${p[0].id}|${p[p.length - 1].id}` : '';
+};
 
 /** 올린 사진의 작은 그림을 살펴봄 (흑백·초록빛·노을빛·어두운 사진, 세로·촬영 연도). 최대 60장 */
 async function analyzePhotos(): Promise<PhotoStats | null> {
   const photos = state.photos;
   if (!photos.length) return null;
-  const key = `${photos.length}|${photos[0].id}|${photos[photos.length - 1].id}`;
+  const key = photosKey();
   if (aiStats?.key === key) return aiStats.stats;
   const step = Math.max(1, photos.length / 60);
   const sample = Array.from({ length: Math.min(60, photos.length) }, (_, i) => photos[Math.floor(i * step)]);
@@ -1108,6 +1114,7 @@ async function applyAi(index: number, opts: { go?: boolean } = {}): Promise<void
   if (!aiBefore) aiBefore = { themeId: state.themeId, variantId: state.variantId, custom: { ...state.custom }, durationMode: state.durationMode, groupPhotos: state.groupPhotos, musicMode: state.musicMode };
   pushUndo();
   aiPick = pick;
+  aiPickKey = stats ? photosKey() : '';
   state.themeId = pick.preset.themeId;
   state.variantId = pick.preset.variantId;
   state.custom = { ...pick.custom };
@@ -1184,7 +1191,15 @@ function syncAi(): void {
   const sameStyle = !!aiPick && aiPick.preset.themeId === state.themeId && aiPick.preset.variantId === (state.variantId ?? baseTheme(state.themeId).variants[0].id);
   picker.setAiMark(aiPick ? { themeId: aiPick.preset.themeId, variantId: aiPick.preset.variantId } : null);
   customizer.setAiPick(sameStyle && aiPick ? aiPick.custom : null);
-  aiPhotos.hidden = state.photos.length === 0 || match;
+  // 사진 단계 바로가기: 아직 추천 전이거나, 바꿨거나, 사진을 보기 전에 고른 추천이면 (사진을 보고 다시)
+  const saw = !!aiPick && aiPick.notes.length > 0 && aiPickKey === photosKey();
+  aiPhotos.hidden = state.photos.length === 0 || (match && saw);
+  const again = match && !saw;
+  $('ai-photos-t').textContent = again ? '사진을 올렸어요 · AI가 다시 볼까요?' : '다 올렸다면 AI 자동 추천';
+  $('ai-photos-d').textContent = again
+    ? 'AI가 올린 사진을 살펴보고(흑백·야외·노을빛·밝기·세로 사진·촬영 연도) 추천을 다시 맞춰 드려요.'
+    : 'AI가 사진을 살펴보고 스타일·효과·음악·길이까지 식전영상에 가장 무난한 조합으로 골라 드려요.';
+  $('ai-photos-go').textContent = again ? '✨ 사진 보고 다시 추천' : '✨ AI 추천 받기';
   renderAi(match);
   if (flow.current === 'export') renderReview();
 }

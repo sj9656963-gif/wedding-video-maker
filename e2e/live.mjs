@@ -433,12 +433,14 @@ try {
   await ap.waitForTimeout(600);
   const back = await ap.evaluate(() => ({ ai: window.__wvm.ai(), theme: window.__wvm.theme().id, custom: window.__wvm.theme().custom, btn: !!document.querySelector('#ai-go') }));
   check("'원래대로' → AI 추천 전 설정 (시네마)", !back.ai && back.theme === 'cinema' && Object.keys(back.custom).length === 0 && back.btn, JSON.stringify(back));
-  // 사진을 올리면 사진 단계에서 바로 AI 추천 → 사진을 보고 고른 메모
+  // 사진보다 먼저 추천을 받았다면, 사진을 올린 뒤 사진 단계에서 '사진 보고 다시 추천' → 사진을 보고 고른 메모
+  await ap.click('#ai-go');
+  await ap.waitForTimeout(800);
   await ap.click('#fb-photos');
   await ap.setInputFiles('#file-input', specs.slice(0, 20).map((s) => path.join(fixDir, s.file)));
   await ap.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''), null, { timeout: 60000 });
   await ap.waitForTimeout(400);
-  const callout = await ap.isVisible('#ai-photos');
+  const callout = (await ap.isVisible('#ai-photos')) && ((await ap.textContent('#ai-photos-go')) ?? '').includes('다시');
   await ap.click('#ai-photos-go');
   await ap.waitForTimeout(1500);
   const a3 = await ap.evaluate(() => {
@@ -454,7 +456,7 @@ try {
     };
   });
   check(
-    "사진 단계의 'AI 추천 받기' → 스타일 단계에 결과 · AI가 본 사진 메모 (사진 수·연도) · 길이는 사진 수에 맞춤",
+    "사진 단계의 '사진 보고 다시 추천' → 스타일 단계에 결과 · AI가 본 사진 메모 (사진 수·연도) · 길이는 사진 수에 맞춤",
     callout && a3.step === 'style' && a3.ai?.preset === 'classic-ivory' && a3.notes.some((n) => n.includes('사진 20장')) && /\d:\d\d/.test(a3.length) && a3.boxTop >= a3.barBottom && a3.boxTop < 400,
     JSON.stringify(a3),
   );
