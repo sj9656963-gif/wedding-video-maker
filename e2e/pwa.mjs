@@ -53,12 +53,31 @@ try {
   const swRes = await fetch(new URL('sw.js', base));
   const swText = await swRes.text();
   check('sw.js 빌드 (자리 표시 채워짐)', swRes.ok && !swText.includes('__VERSION__') && !swText.includes('__PRECACHE__'));
+  // 미리 저장 목록이 하나라도 없으면 서비스 워커 설치가 통째로 실패함. 로컬 미리보기 서버는 없는 파일에도
+  // index.html을 돌려주므로(200) 상태 코드만이 아니라 스크립트·스타일이 HTML로 오지 않는지도 봄
+  const precache = JSON.parse(/const PRECACHE = (\[[\s\S]*?\]);/.exec(swText)?.[1] ?? '[]');
+  const badPre = (
+    await Promise.all(
+      precache.map(async (p) => {
+        const r = await fetch(new URL(p, base), { cache: 'no-store' });
+        await r.arrayBuffer();
+        const html = /text\/html/.test(r.headers.get('content-type') ?? '');
+        return r.ok && !(html && /\.(js|css)$/.test(p)) ? null : `${p} (${r.status}${html ? ', html' : ''})`;
+      }),
+    )
+  ).filter(Boolean);
+  check('미리 저장 목록 파일이 모두 있음', precache.length > 5 && badPre.length === 0, badPre.length ? `${badPre.length}개 없음: ${badPre.slice(0, 3).join(', ')}` : `${precache.length}개`);
 
   // ── 첫 방문: 등록 ──
   await page.goto(url);
   await ready();
   const reg = await page.evaluate(async () => {
-    const r = await navigator.serviceWorker.ready;
+    // 설치가 실패하면 ready가 영원히 끝나지 않으므로 시간 제한
+    const r = await Promise.race([navigator.serviceWorker.ready, new Promise((res) => setTimeout(() => res(null), 30000))]);
+    if (!r) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      return { scope: regs[0]?.scope ?? null, state: regs[0]?.installing?.state ?? regs[0]?.waiting?.state ?? 'not ready (30s)', controlled: false };
+    }
     return { scope: r.scope, state: r.active?.state ?? null, controlled: !!navigator.serviceWorker.controller };
   });
   check('서비스 워커 등록 · 활성 (사이트 주소 범위)', reg.state === 'activated' && reg.scope === base, JSON.stringify(reg));
