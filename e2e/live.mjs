@@ -376,6 +376,97 @@ try {
   );
   await page.close();
 
+  // ───────────── AI 자동 추천 (PC, 처음부터) ─────────────
+  const ap = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  watch(ap, 'ai');
+  await ap.goto(url);
+  await ap.evaluate(() => localStorage.clear());
+  await ap.reload();
+  await ap.waitForFunction(() => window.__wvm?.demoReady(), null, { timeout: 30000 });
+  await ap.evaluate(() => document.querySelector('#steps').scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await ap.click('#fb-style');
+  // 직접 하나 바꿔 둔 뒤 AI 추천 → '원래대로'로 돌아오는지
+  await ap.click('label.theme-card:has(input[value="cinema"])');
+  await ap.waitForTimeout(400);
+  const introBox = await ap.evaluate(() => ({ ai: window.__wvm.ai(), btn: !!document.querySelector('#ai-go'), applied: document.querySelector('#ai-box').classList.contains('applied') }));
+  await ap.click('#ai-go');
+  await ap.waitForTimeout(1200);
+  const a1 = await ap.evaluate(() => {
+    const t = window.__wvm.theme();
+    const rows = [...document.querySelectorAll('#ai-box [data-ai-row]')].map((li) => li.getAttribute('data-ai-row'));
+    const pill = document.querySelector('label.theme-card:has(input[value="classic"]) .ai-pill');
+    return {
+      ai: window.__wvm.ai(),
+      theme: `${t.id}/${t.variant}`,
+      custom: t.custom,
+      rows,
+      status: document.querySelector('#ai-box .ai-status')?.textContent ?? '',
+      title: document.querySelector('#ai-title')?.textContent ?? '',
+      poster: (document.querySelector('#ai-box .ai-poster')?.getAttribute('src') ?? '').slice(0, 20),
+      pill: !!pill && !pill.hidden,
+    };
+  });
+  check(
+    'AI 자동 추천: 버튼 한 번에 가장 무난한 조합 (클래식 · 아이보리 골드, 꽃잎 조금)',
+    !introBox.ai && introBox.btn && !introBox.applied && a1.ai?.preset === 'classic-ivory' && a1.theme === 'classic/ivory' && a1.custom.particle === 'petals' && a1.custom.amount === 'low' && a1.ai.match,
+    JSON.stringify({ theme: a1.theme, custom: a1.custom, ai: a1.ai }),
+  );
+  check(
+    'AI가 고른 세부 정보가 한눈에 (스타일·오프닝·글씨체·색감·효과·전환·음악·길이 + 그림 + AI 추천 표시)',
+    a1.rows.join() === 'style,opening,font,color,effect,motion,music,length' && a1.status.includes('추천 조합') && a1.title.includes('클래식') && a1.poster.startsWith('data:image') && a1.pill,
+    JSON.stringify({ rows: a1.rows, status: a1.status, title: a1.title, poster: a1.poster, pill: a1.pill }),
+  );
+  await ap.locator('#ai-box').screenshot({ path: out('live-pc-ai-card.png') });
+  await ap.click('#ai-next');
+  await ap.waitForTimeout(900);
+  const a2 = await ap.evaluate(() => ({ ai: window.__wvm.ai(), theme: window.__wvm.theme().id, kicker: document.querySelector('#ai-box .ai-kicker')?.textContent ?? '' }));
+  check("'다른 추천'으로 두 번째 추천 (로맨틱 · 벚꽃 핑크)", a2.ai?.rank === 1 && a2.ai.preset === 'romantic-blossom' && a2.theme === 'romantic' && a2.kicker.includes('2/'), JSON.stringify(a2));
+  // 카드의 '바꾸기' → 세부 설정의 그 탭이 열림, 직접 바꾸면 'AI 추천대로 다시'
+  await ap.click('#ai-box button[data-ai-go="effect"]');
+  await ap.waitForTimeout(900);
+  const tabOpen = await ap.evaluate(() => ({ open: window.__wvm.detailOpen(), tab: window.__wvm.czPanel(), mark: !!document.querySelector('#czp-effect .ai-pick') }));
+  await ap.click('#particle-options button[data-value="hearts"]');
+  await ap.waitForTimeout(300);
+  const changed = await ap.evaluate(() => ({ match: window.__wvm.ai()?.match, again: !!document.querySelector('#ai-again') }));
+  check("카드의 '바꾸기' → 그 탭(효과)이 열리고 AI가 고른 값에 표시 · 직접 바꾸면 'AI 추천대로 다시'", tabOpen.open && tabOpen.tab === 'effect' && tabOpen.mark && changed.match === false && changed.again, JSON.stringify({ tabOpen, changed }));
+  await ap.click('#ai-revert');
+  await ap.waitForTimeout(600);
+  const back = await ap.evaluate(() => ({ ai: window.__wvm.ai(), theme: window.__wvm.theme().id, custom: window.__wvm.theme().custom, btn: !!document.querySelector('#ai-go') }));
+  check("'원래대로' → AI 추천 전 설정 (시네마)", !back.ai && back.theme === 'cinema' && Object.keys(back.custom).length === 0 && back.btn, JSON.stringify(back));
+  // 사진을 올리면 사진 단계에서 바로 AI 추천 → 사진을 보고 고른 메모
+  await ap.click('#fb-photos');
+  await ap.setInputFiles('#file-input', specs.slice(0, 20).map((s) => path.join(fixDir, s.file)));
+  await ap.waitForFunction(() => /추가했어요/.test(document.querySelector('#import-status')?.textContent ?? ''), null, { timeout: 60000 });
+  await ap.waitForTimeout(400);
+  const callout = await ap.isVisible('#ai-photos');
+  await ap.click('#ai-photos-go');
+  await ap.waitForTimeout(1500);
+  const a3 = await ap.evaluate(() => {
+    const box = document.querySelector('#ai-box').getBoundingClientRect();
+    const bar = document.querySelector('#flow-bar').getBoundingClientRect();
+    return {
+      step: window.__wvm.step(),
+      ai: window.__wvm.ai(),
+      notes: [...document.querySelectorAll('#ai-box .ai-note')].map((n) => n.textContent),
+      length: document.querySelector('#ai-box [data-ai-row="length"] .ai-vt')?.textContent ?? '',
+      boxTop: Math.round(box.top),
+      barBottom: Math.round(bar.bottom),
+    };
+  });
+  check(
+    "사진 단계의 'AI 추천 받기' → 스타일 단계에 결과 · AI가 본 사진 메모 (사진 수·연도) · 길이는 사진 수에 맞춤",
+    callout && a3.step === 'style' && a3.ai?.preset === 'classic-ivory' && a3.notes.some((n) => n.includes('사진 20장')) && /\d:\d\d/.test(a3.length) && a3.boxTop >= a3.barBottom && a3.boxTop < 400,
+    JSON.stringify(a3),
+  );
+  await ap.screenshot({ path: out('live-pc-ai-photos.png') });
+  await ap.waitForTimeout(600);
+  await ap.reload();
+  await ap.waitForFunction(() => window.__wvm?.demoReady(), null, { timeout: 30000 });
+  await ap.waitForTimeout(800);
+  const kept = await ap.evaluate(() => ({ ai: window.__wvm.ai(), applied: document.querySelector('#ai-box').classList.contains('applied'), theme: window.__wvm.theme().id }));
+  check('새로고침해도 AI 추천 표시가 이어짐', kept.ai?.preset === 'classic-ivory' && kept.ai.match && kept.applied && kept.theme === 'classic', JSON.stringify(kept));
+  await ap.close();
+
   // ───────────── 휴대폰 (390×844) ─────────────
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const m = await ctx.newPage();
@@ -487,6 +578,18 @@ try {
   await m.locator('#fb-text').tap();
   await m.waitForTimeout(400);
   await m.screenshot({ path: out('live-mobile-text.png') });
+  // AI 자동 추천 (휴대폰)
+  await m.locator('#fb-style').tap();
+  await m.waitForTimeout(300);
+  await m.evaluate(() => document.querySelector('#ai-box').scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await m.locator('#ai-go').tap();
+  await m.waitForTimeout(1200);
+  const mai = await m.evaluate(() => {
+    const r = document.querySelector('#ai-box').getBoundingClientRect();
+    return { ai: window.__wvm.ai(), rows: document.querySelectorAll('#ai-box [data-ai-row]').length, left: Math.round(r.left), right: Math.round(r.right), vw: document.documentElement.clientWidth };
+  });
+  check('휴대폰: AI 자동 추천 → 고른 8가지를 한눈에 (화면 폭 안)', mai.ai?.preset === 'classic-ivory' && mai.rows === 8 && mai.left >= 0 && mai.right <= mai.vw, JSON.stringify(mai));
+  await m.locator('#ai-box').screenshot({ path: out('live-mobile-ai.png') });
   // 가로 스크롤 없음
   const sw = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   check('휴대폰: 가로로 넘치는 화면 없음', sw[0] <= sw[1], sw.join(' / '));

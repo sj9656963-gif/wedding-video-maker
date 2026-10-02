@@ -20,6 +20,8 @@ export interface SavedSettings {
   groupPhotos: boolean;
   durationMode: DurationMode;
   quality: '1080p' | '720p';
+  /** AI 자동 추천으로 고른 조합 (추천 표시용). 없으면 추천을 쓰지 않음 */
+  ai?: { preset: string; rank: number; custom: Record<string, unknown> } | null;
 }
 
 export function loadSettings(): Partial<SavedSettings> {

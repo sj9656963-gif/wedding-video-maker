@@ -13,14 +13,20 @@ import { initPwa } from './pwa';
 import type { RenderContext } from './renderer';
 import { loadSettings, saveSettings, type DurationMode } from './settings-store';
 import { SUGGESTIONS, type SuggestField } from './suggestions';
+import { matchesPick, pixelStats, recommend, summarize, AI_PRESETS, type AiPick, type PhotoStats, type PixelStats } from './recommend';
+import { fontById } from './font-catalog';
 import {
   DEFAULT_THEME_ID,
+  FILTERS,
+  PARTICLES,
   STRUCTURAL_KEYS,
   THEMES,
+  TITLE_DESIGNS,
   baseTheme,
   customCount,
   resolveTheme,
   sanitizeCustom,
+  transitionName,
   type CustomKey,
   type Customization,
   type Theme,
@@ -109,6 +115,13 @@ const state = {
 };
 
 let timeline: Timeline | null = null;
+/** AI 자동 추천: 지금 보여 주는 추천 조합 (새로고침해도 'AI 추천' 표시를 이어 감, 사진 메모는 사진과 함께 사라짐) */
+let aiPick: AiPick | null = (() => {
+  const s = saved.ai;
+  const preset = s ? AI_PRESETS.find((p) => p.id === s.preset) : undefined;
+  if (!s || !preset) return null;
+  return { preset, rank: Math.max(0, Math.floor(Number(s.rank)) || 0), total: AI_PRESETS.length, custom: sanitizeCustom(s.custom), notes: [] };
+})();
 let excludedIds = new Set<string>();
 let exporting = false;
 let nextAddedIndex = 0;
@@ -131,6 +144,7 @@ const persist = debounce(() => {
     groupPhotos: state.groupPhotos,
     durationMode: state.durationMode,
     quality: state.quality,
+    ai: aiPick ? { preset: aiPick.preset.id, rank: aiPick.rank, custom: { ...aiPick.custom } } : null,
   });
 }, 400);
 
@@ -241,6 +255,7 @@ function rebuild(audioMayChange = false): void {
   flow.setBadge('photos', photos.length ? String(photos.length) : '');
   flow.setDone('photos', photos.length > 0);
   if (flow.current === 'export') renderReview();
+  syncAi();
   const durationChanged = (timeline?.duration ?? 0) !== prevDuration;
   player.refresh(audioMayChange || durationChanged);
 }
@@ -939,6 +954,7 @@ const picker = new StylePicker({
     showDemo(theme, { restart: true });
     if (liveTab === 'mine' && timeline && !player.isPlaying) player.seek(4.5);
     toast(what === 'theme' ? `${theme.name} 스타일 적용` : `양식 · ${theme.variants.find((v) => v.id === theme.variantId)?.name ?? ''} 적용`);
+    syncAi();
   },
 });
 
@@ -972,6 +988,7 @@ const customizer = new Customizer({
     refreshFonts();
     if (key !== 'title') customizer.invalidatePosters();
     toast(message);
+    syncAi();
   },
   onPreview: (next, key) => {
     hoverCustom = next;
@@ -1022,6 +1039,7 @@ function undoStyle(): void {
   showDemo(currentTheme(), { restart });
   if (liveTab === 'mine' && timeline && !player.isPlaying) player.seek(4.5);
   toast('방금 바꾼 것을 되돌렸어요');
+  syncAi();
 }
 undoBtn.addEventListener('click', undoStyle);
 // 스타일 단계에서 Ctrl+Z(⌘Z): 글자를 쓰는 칸이 아니면 스타일·꾸미기 되돌리기
@@ -1032,6 +1050,280 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   undoStyle();
 });
+
+// ───────────────────────── AI 자동 추천 (고르기 어려우면 한 번에) ─────────────────────────
+
+const aiBox = $('ai-box');
+const aiPhotos = $('ai-photos');
+/** 추천 전 설정 ('원래대로') */
+let aiBefore: { themeId: string; variantId: string | null; custom: Customization; durationMode: DurationMode; groupPhotos: boolean; musicMode: 'default' | 'custom' } | null = null;
+let aiStats: { key: string; stats: PhotoStats | null } | null = null;
+const aiPosters = new Map<string, string>();
+
+/** 올린 사진의 작은 그림을 살펴봄 (흑백·초록빛·노을빛·어두운 사진, 세로·촬영 연도). 최대 60장 */
+async function analyzePhotos(): Promise<PhotoStats | null> {
+  const photos = state.photos;
+  if (!photos.length) return null;
+  const key = `${photos.length}|${photos[0].id}|${photos[photos.length - 1].id}`;
+  if (aiStats?.key === key) return aiStats.stats;
+  const step = Math.max(1, photos.length / 60);
+  const sample = Array.from({ length: Math.min(60, photos.length) }, (_, i) => photos[Math.floor(i * step)]);
+  const c = document.createElement('canvas');
+  c.width = c.height = 24;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  const pix: PixelStats[] = [];
+  if (g) {
+    for (const p of sample) {
+      try {
+        const img = new Image();
+        img.src = p.thumbUrl;
+        await img.decode();
+        g.clearRect(0, 0, 24, 24);
+        g.drawImage(img, 0, 0, 24, 24);
+        pix.push(pixelStats(g.getImageData(0, 0, 24, 24).data));
+      } catch {
+        /* 못 읽은 사진은 건너뜀 */
+      }
+    }
+  }
+  const stats = summarize(photos, pix);
+  aiStats = { key, stats };
+  return stats;
+}
+
+/** 지금 스타일·양식·꾸미기가 AI 추천과 같은지 */
+function aiMatches(): boolean {
+  if (!aiPick) return false;
+  const p = aiPick.preset;
+  return matchesPick({ themeId: p.themeId, variantId: p.variantId, custom: aiPick.custom }, { themeId: state.themeId, variantId: state.variantId, custom: state.custom }, baseTheme(state.themeId).variants[0].id);
+}
+
+/** index번째 추천을 적용 (사진을 올렸으면 사진도 보고). go = 스타일 단계로 가서 결과를 보여 줌 */
+async function applyAi(index: number, opts: { go?: boolean } = {}): Promise<void> {
+  if (exporting) return;
+  aiBox.classList.add('busy');
+  const stats = await analyzePhotos();
+  aiBox.classList.remove('busy');
+  const pick = recommend(stats, index);
+  if (!aiBefore) aiBefore = { themeId: state.themeId, variantId: state.variantId, custom: { ...state.custom }, durationMode: state.durationMode, groupPhotos: state.groupPhotos, musicMode: state.musicMode };
+  pushUndo();
+  aiPick = pick;
+  state.themeId = pick.preset.themeId;
+  state.variantId = pick.preset.variantId;
+  state.custom = { ...pick.custom };
+  hoverCustom = null;
+  hoverKey = null;
+  picker.setSelection({ themeId: state.themeId, variantId: state.variantId });
+  customizer.setCustom(state.custom);
+  // 사진은 여러 장 모아 보기, 길이는 사진 수(내 음악이면 음악 길이)에 맞춤, 음악은 기본 피아노 (내 음악을 올렸으면 그대로)
+  state.groupPhotos = true;
+  groupInput.checked = true;
+  if (hasCustomMusic()) state.durationMode = 'music';
+  else {
+    state.durationMode = 'auto';
+    if (state.musicMode !== 'default') setMusicMode('default');
+  }
+  persist();
+  rebuild();
+  refreshFonts();
+  customizer.refresh();
+  customizer.invalidatePosters();
+  const theme = currentTheme();
+  showDemo(theme, { restart: true });
+  if (liveTab === 'mine' && timeline && !player.isPlaying) player.seek(4.5);
+  syncAi();
+  toast(`AI 추천 · ${theme.name} ${theme.variants.find((v) => v.id === theme.variantId)?.name ?? ''} 적용`);
+  if (opts.go) {
+    flow.go('style', { focus: false });
+    // 카드 윗부분(추천 이름)이 위에 붙은 미리보기·단계 표시줄에 가리지 않게
+    const top = aiBox.getBoundingClientRect().top - stuckTop() - 8;
+    if (Math.abs(top) > 4) window.scrollBy({ top, behavior: reducedMotion ? 'instant' as ScrollBehavior : 'smooth' });
+  }
+}
+
+/** AI 추천 전 설정으로 */
+function revertAi(): void {
+  const b = aiBefore;
+  if (!b || exporting) return;
+  pushUndo();
+  aiPick = null;
+  aiBefore = null;
+  state.themeId = b.themeId;
+  state.variantId = b.variantId;
+  state.custom = { ...b.custom };
+  state.durationMode = b.durationMode;
+  state.groupPhotos = b.groupPhotos;
+  groupInput.checked = b.groupPhotos;
+  hoverCustom = null;
+  hoverKey = null;
+  picker.setSelection({ themeId: b.themeId, variantId: b.variantId });
+  customizer.setCustom(b.custom);
+  if (state.musicMode !== b.musicMode) setMusicMode(b.musicMode);
+  persist();
+  rebuild();
+  refreshFonts();
+  customizer.refresh();
+  customizer.invalidatePosters();
+  showDemo(currentTheme(), { restart: true });
+  syncAi();
+  toast('AI 추천 전 설정으로 되돌렸어요');
+}
+
+/** 세부 설정의 그 탭을 열어 보여 줌 (AI 추천 카드의 '바꾸기') */
+function openDetailTab(tab: Panel): void {
+  flow.go('style', { focus: false, scroll: false });
+  if (!picker.detailOpen) picker.select(state.themeId);
+  customizer.show(tab);
+  const top = $('style-detail').getBoundingClientRect().top - stuckTop() - 8;
+  window.scrollBy({ top, behavior: reducedMotion ? 'auto' : 'smooth' });
+}
+
+/** AI 추천 카드·표시를 지금 상태에 맞춤 */
+function syncAi(): void {
+  const match = aiMatches();
+  const sameStyle = !!aiPick && aiPick.preset.themeId === state.themeId && aiPick.preset.variantId === (state.variantId ?? baseTheme(state.themeId).variants[0].id);
+  picker.setAiMark(aiPick ? { themeId: aiPick.preset.themeId, variantId: aiPick.preset.variantId } : null);
+  customizer.setAiPick(sameStyle && aiPick ? aiPick.custom : null);
+  aiPhotos.hidden = state.photos.length === 0 || match;
+  renderAi(match);
+  if (flow.current === 'export') renderReview();
+}
+
+const AI_TAB: Record<string, Panel> = { style: 'variant', opening: 'opening', font: 'font', color: 'color', effect: 'effect', motion: 'motion' };
+
+function renderAi(match = aiMatches()): void {
+  const focusedId = aiBox.contains(document.activeElement) ? document.activeElement?.id : '';
+  const pick = aiPick;
+  if (!pick) {
+    aiBox.classList.remove('applied');
+    aiBox.replaceChildren(
+      h('div', { class: 'ai-intro' }, [
+        h('span', { class: 'ai-spark', text: '✨', attrs: { 'aria-hidden': 'true' } }),
+        h('div', { class: 'ai-copy' }, [
+          h('h3', { text: '고르기 어렵다면 AI 자동 추천', attrs: { id: 'ai-title' } }),
+          h('p', {
+            text: '식전영상에 가장 무난하고 인기 있는 조합으로 스타일 · 양식 · 오프닝 · 글씨체 · 효과 · 전환 · 음악 · 길이를 한 번에 골라 드려요. 사진을 올렸다면 사진도 살펴보고 맞춰요.',
+          }),
+        ]),
+        h('button', { class: 'btn primary ai-go', text: '✨ AI 추천으로 골라 주세요', attrs: { type: 'button', id: 'ai-go' }, on: { click: () => void applyAi(0) } }),
+      ]),
+    );
+  } else {
+    const p = pick.preset;
+    const t = resolveTheme(p.themeId, { variant: p.variantId, ...pick.custom });
+    const variant = t.variants.find((v) => v.id === t.variantId);
+    const names = `${state.info.groom.trim() || '민준'} ♥ ${state.info.bride.trim() || '서연'}`;
+    const posterKey = `${p.id}|${JSON.stringify(pick.custom)}|${names}|${state.info.date}`;
+    let poster = aiPosters.get(posterKey);
+    if (!poster && demoReady) {
+      poster = renderPoster(t, demoInfo(state.info), 480, 270, 'intro');
+      aiPosters.set(posterKey, poster);
+    }
+    const fontName = (f: string) => fontById(f)?.name ?? f;
+    const sample = (text: string, family: string, cls: string) => {
+      const s = h('span', { class: cls, text });
+      s.style.fontFamily = `"${family}", serif`;
+      return s;
+    };
+    const effects = [
+      t.effects.particles > 0 ? `${PARTICLES.find((x) => x.id === t.effects.particle)?.name ?? ''}${pick.custom.amount === 'low' ? ' 조금' : pick.custom.amount === 'high' ? ' 많이' : ''}` : '',
+      t.effects.bokeh > 0 ? '빛망울' : '',
+      t.effects.sparkles > 0 ? '별빛' : '',
+      t.effects.glow > 0 ? '은은한 빛 번짐' : '',
+    ].filter(Boolean);
+    const trans = [...t.transitions].sort((a, b) => b.weight - a.weight).slice(0, 3).map((x) => transitionName(x.type));
+    const music = hasCustomMusic();
+    const rows: { id: string; ico: string; k: string; v: (Node | string)[]; sub: string; go: () => void }[] = [
+      { id: 'style', ico: '🎨', k: '스타일', v: [`${t.name} · ${variant?.name ?? ''}`], sub: p.headline, go: () => openDetailTab('variant') },
+      { id: 'opening', ico: '🎬', k: '오프닝', v: [TITLE_DESIGNS.find((d) => d.id === t.titleDesign)?.name ?? '클래식'], sub: '이름·날짜가 또렷한 오프닝과 엔딩', go: () => openDetailTab('opening') },
+      {
+        id: 'font',
+        ico: 'Aa',
+        k: '글씨체',
+        v: [sample('Wedding Day', t.fonts.title, 'ai-font-en'), sample(names, t.fonts.name, 'ai-font-kr')],
+        sub: `${fontName(t.fonts.title)} · ${fontName(t.fonts.name)} — 우아하면서 읽기 편하게`,
+        go: () => openDetailTab('font'),
+      },
+      {
+        id: 'color',
+        ico: '🎞️',
+        k: '색감',
+        v: [pick.custom.filter ? (FILTERS.find((f) => f.id === pick.custom.filter)?.name ?? '') : '스타일 기본 보정'],
+        sub: '피부톤이 자연스럽게',
+        go: () => openDetailTab('color'),
+      },
+      { id: 'effect', ico: '🌸', k: '효과', v: [effects.join(' · ') || '없음 (사진만 또렷하게)'], sub: '화사하지만 사진을 가리지 않게', go: () => openDetailTab('effect') },
+      { id: 'motion', ico: '💫', k: '전환', v: [trans.join(' · ')], sub: '스타일에 맞게 부드럽게 섞기 · 보통 속도', go: () => openDetailTab('motion') },
+      {
+        id: 'music',
+        ico: '🎵',
+        k: '음악',
+        v: [music ? `내 음악 ${state.customMusic.length}곡` : '캐논 변주 피아노'],
+        sub: music ? '올리신 음악 그대로 · 영상 길이를 음악에 맞춤' : '식전영상에 가장 무난 · 저작권 걱정 없음',
+        go: () => flow.go('sound'),
+      },
+      {
+        id: 'length',
+        ico: '⏱️',
+        k: '길이',
+        v: [timeline ? formatTime(timeline.duration) : '자동'],
+        sub: timeline ? `사진 ${timeline.photoCount}장에 맞춤 · 식전영상은 보통 3~4분` : '사진을 올리면 사진 수에 맞춰 정해져요 (보통 3~4분)',
+        go: () => flow.go('sound'),
+      },
+    ];
+    const swatch = h('span', { class: 'ai-swatch', attrs: { 'aria-hidden': 'true' } });
+    swatch.style.background = `linear-gradient(135deg, ${(variant?.swatch ?? t.swatch)[0]}, ${(variant?.swatch ?? t.swatch)[1]})`;
+    const rowEls = rows.map((r) =>
+      h('li', { attrs: { 'data-ai-row': r.id } }, [
+        h('span', { class: 'ai-ico', text: r.ico, attrs: { 'aria-hidden': 'true' } }),
+        h('span', { class: 'ai-k', text: r.k }),
+        h('span', { class: 'ai-v' }, [h('span', { class: 'ai-vt' }, [...(r.id === 'style' ? [swatch] : []), ...r.v]), h('small', { text: r.sub })]),
+        h('button', {
+          class: 'btn subtle small',
+          text: '바꾸기',
+          attrs: { type: 'button', 'aria-label': `${r.k} 바꾸기`, 'data-ai-go': AI_TAB[r.id] ?? 'sound' },
+          on: { click: r.go },
+        }),
+      ]),
+    );
+    const notes = pick.notes.length
+      ? h('div', { class: 'ai-photos' }, [
+          h('b', { text: '🔍 AI가 본 사진' }),
+          ...pick.notes.map((n) => h('span', { class: 'ai-note' }, [n.text, ...(n.then ? [h('i', { text: ` → ${n.then}` })] : [])])),
+        ])
+      : null;
+    const img = h('img', { class: 'ai-poster', attrs: { alt: `${t.name} · ${variant?.name ?? ''} 오프닝 미리보기`, src: poster ?? '' } });
+    if (!poster) img.hidden = true;
+    aiBox.classList.add('applied');
+    aiBox.replaceChildren(
+      h('div', { class: 'ai-head' }, [
+        h('span', { class: 'ai-spark', text: '✨', attrs: { 'aria-hidden': 'true' } }),
+        h('div', { class: 'ai-title-wrap' }, [
+          h('p', { class: 'ai-kicker', text: `AI 추천 조합 · ${pick.rank + 1}/${pick.total}` }),
+          h('h3', { attrs: { id: 'ai-title' } }, [`${t.name} · ${variant?.name ?? ''}`, h('small', { text: p.headline })]),
+        ]),
+        h('div', { class: 'ai-actions' }, [
+          h('button', { class: 'btn subtle small', text: '↻ 다른 추천', attrs: { type: 'button', id: 'ai-next' }, on: { click: () => void applyAi(pick.rank + 1) } }),
+          ...(aiBefore ? [h('button', { class: 'btn subtle small', text: '원래대로', attrs: { type: 'button', id: 'ai-revert' }, on: { click: revertAi } })] : []),
+        ]),
+      ]),
+      h('div', { class: 'ai-body' }, [h('figure', { class: 'ai-fig' }, [img, h('figcaption', { class: 'ai-why', text: p.why })]), h('ul', { class: 'ai-rows', attrs: { 'aria-label': 'AI가 고른 세부 설정' } }, rowEls)]),
+      ...(notes ? [notes] : []),
+      h('div', { class: 'ai-foot' }, [
+        match
+          ? h('span', { class: 'ai-status ok', text: '✓ 지금 이 추천 조합으로 만들어져요' })
+          : h('span', { class: 'ai-status' }, [
+              '직접 바꾼 설정이 있어요 ',
+              h('button', { class: 'btn subtle small', text: 'AI 추천대로 다시', attrs: { type: 'button', id: 'ai-again' }, on: { click: () => void applyAi(pick.rank) } }),
+            ]),
+        h('button', { class: 'btn primary', text: '이대로 다음: 문구 입력 ›', attrs: { type: 'button', id: 'ai-continue' }, on: { click: () => flow.go('text') } }),
+      ]),
+    );
+  }
+  if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
+}
+
+$('ai-photos-go').addEventListener('click', () => void applyAi(0, { go: true }));
 
 // ───────────────────────── 홈 화면 라이브 데모 (스타일을 차례로 보여줌) ─────────────────────────
 
@@ -1113,6 +1405,9 @@ async function initStyleDemos(): Promise<void> {
   await picker.renderPosters();
   site.setPosters((id) => picker.posterUrl(id));
   customizer.invalidatePosters();
+  // 글꼴·샘플 그림이 준비됐으니 AI 추천 카드 그림도 제대로 다시
+  aiPosters.clear();
+  syncAi();
 }
 
 const groupInput = $<HTMLInputElement>('f-group');
@@ -1319,7 +1614,7 @@ function renderReview(): void {
     {
       step: 'style',
       k: '스타일',
-      v: [`${theme.name}${variant && theme.variants.length > 1 ? ` · ${variant.name}` : ''}`, custom ? `직접 꾸민 항목 ${custom}개` : ''].filter(Boolean).join(' · '),
+      v: [`${theme.name}${variant && theme.variants.length > 1 ? ` · ${variant.name}` : ''}`, aiMatches() ? '✨ AI 추천' : custom ? `직접 꾸민 항목 ${custom}개` : ''].filter(Boolean).join(' · '),
       ok: true,
     },
     {
@@ -1522,6 +1817,7 @@ if (new URLSearchParams(location.search).has('e2e')) {
     detailOpen: () => picker.detailOpen,
     step: () => flow.current,
     czPanel: () => customizer.current,
+    ai: () => (aiPick ? { preset: aiPick.preset.id, rank: aiPick.rank, custom: { ...aiPick.custom }, notes: aiPick.notes.map((n) => n.text), match: aiMatches() } : null),
     /** 사진마다 문구 넣기 (화면 캡처 점검용): fn(순서) → 문구 */
     setCaptions: (fn: (index: number) => string) => {
       state.photos.forEach((p, i) => {

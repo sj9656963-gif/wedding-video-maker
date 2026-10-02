@@ -386,6 +386,12 @@
                 </div>
               </div>
               <div id="import-status" class="status" role="status" aria-live="polite"></div>
+              <!-- 사진을 올리면: AI가 사진을 보고 한 번에 골라 주기 -->
+              <div class="ai-callout" id="ai-photos" hidden>
+                <span class="ai-spark small" aria-hidden="true">✨</span>
+                <p><b>다 올렸다면 AI 자동 추천</b><br />AI가 사진을 살펴보고 스타일·효과·음악·길이까지 식전영상에 가장 무난한 조합으로 골라 드려요.</p>
+                <button type="button" class="btn primary" id="ai-photos-go">✨ AI 추천 받기</button>
+              </div>
 
               <div id="photo-toolbar" class="toolbar" hidden>
                 <div class="chip-group" role="group" aria-label="사진 정렬">
@@ -415,6 +421,8 @@
               <section class="card step" data-step="style" aria-labelledby="h-style" id="style-card" hidden>
                 <h2 id="h-style" tabindex="-1"><span class="num" aria-hidden="true">2</span>스타일 고르고 꾸미기</h2>
                 <p class="section-lead">카드를 누르면 <b>바로 아래에 세부 설정</b>이 열려요. 양식 · 오프닝과 문구 · 글씨체 · 색감 · 효과 · 전환을 탭으로 그 자리에서 바꿔 가며 고르고, <span class="only-wide">오른쪽 미리보기로 바로 확인해요.</span><span class="only-narrow">위쪽 미리보기로 바로 확인해요.</span></p>
+                <!-- AI 자동 추천: 고르기 어려우면 한 번에 (main.ts가 추천 전/후 화면을 그림) -->
+                <section class="ai-box" id="ai-box" aria-labelledby="ai-title"></section>
                 <div id="mood-filter" class="chip-group mood-filter" role="group" aria-label="분위기로 거르기"></div>
                 <div id="theme-list" class="theme-list" role="group" aria-label="영상 스타일"></div>
 
@@ -692,7 +700,7 @@
             </details>
             <details>
               <summary>글씨체나 색, 효과를 직접 바꿀 수 있나요?</summary>
-              <div class="ans"><p>네. 스타일 카드를 누르면 바로 아래에 세부 설정이 열리고, 위쪽 탭으로 양식 · 오프닝과 문구 · 글씨체 · 색감 · 효과 · 전환을 그 자리에서 바꿔 가며 고를 수 있어요. 오프닝 디자인을 고른 바로 아래에서 이름·날짜·제목을 쓰면 미리보기에 바로 나와요. 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동하고, 마음에 안 들면 '되돌리기'로 방금 바꾼 것을 취소하거나 '모두 스타일 기본으로'를 누르면 돼요. 사진 · 스타일 · 문구 · 음악·길이 · 만들기 단계도 위쪽(휴대폰은 아래쪽) 단계 표시줄로 스크롤 없이 오갈 수 있어요.</p></div>
+              <div class="ans"><p>네. 스타일 카드를 누르면 바로 아래에 세부 설정이 열리고, 위쪽 탭으로 양식 · 오프닝과 문구 · 글씨체 · 색감 · 효과 · 전환을 그 자리에서 바꿔 가며 고를 수 있어요. 오프닝 디자인을 고른 바로 아래에서 이름·날짜·제목을 쓰면 미리보기에 바로 나와요. 고르는 즉시 옆(휴대폰은 위쪽) 미리보기가 그 장면으로 이동하고, 마음에 안 들면 '되돌리기'로 방금 바꾼 것을 취소하거나 '모두 스타일 기본으로'를 누르면 돼요. 사진 · 스타일 · 문구 · 음악·길이 · 만들기 단계도 위쪽(휴대폰은 아래쪽) 단계 표시줄로 스크롤 없이 오갈 수 있어요. 고르기 어렵다면 'AI 자동 추천'을 누르세요. 식전영상에 가장 무난하고 인기 있는 조합을 사진까지 살펴보고 한 번에 골라 주고, 무엇을 왜 골랐는지 한눈에 보여 줘요.</p></div>
             </details>
             <details>
               <summary>배경음악은 어떻게 넣나요?</summary>

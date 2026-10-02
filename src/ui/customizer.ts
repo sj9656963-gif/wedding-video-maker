@@ -179,6 +179,12 @@ export interface CustomizerOptions {
 
 const canHover = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const idle = () => new Promise<void>((r) => setTimeout(r, 0));
+/** 꾸미기 두 개가 같은 값인지 */
+const sameCustom = (a: Customization, b: Customization) => {
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  return [...new Set([...Object.keys(x), ...Object.keys(y)])].every((k) => x[k] === y[k]);
+};
 /** 화면 이동 없이 바로 (html의 부드러운 스크롤 설정을 무시) */
 const INSTANT = 'instant' as ScrollBehavior;
 
@@ -205,6 +211,8 @@ export class Customizer {
   private postersDirty = true;
   /** 세부 설정이 열려 있어 화면에 보이는지 (닫혀 있으면 카드 그림을 미뤄 둠) */
   private visible = false;
+  /** AI 자동 추천이 고른 꾸미기 (표시용) */
+  private aiPick: Customization | null = null;
 
   constructor(private readonly opts: CustomizerOptions) {
     this.custom = sanitizeCustom(opts.initial);
@@ -247,6 +255,17 @@ export class Customizer {
     this.sync();
     this.postersDirty = true;
     if (this.panel === 'opening' && this.visible) void this.renderPosters();
+  }
+
+  /** AI 자동 추천이 고른 값에 'AI' 표시 (null이면 지움) */
+  setAiPick(custom: Customization | null): void {
+    this.aiPick = custom ? sanitizeCustom(custom) : null;
+    const values = (this.aiPick ?? {}) as Record<string, string>;
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#custom-card button[data-key][data-value]')) {
+      const key = b.dataset.key ?? '';
+      b.classList.toggle('ai-pick', key in values && values[key] === b.dataset.value);
+    }
+    this.sync();
   }
 
   /** 스타일·양식이 바뀌었을 때 '추천' 이름과 오프닝 카드 그림을 다시 */
@@ -574,7 +593,8 @@ export class Customizer {
       }
     }
     const n = customCount(this.custom);
-    this.countEl.textContent = n ? `직접 꾸민 항목 ${n}개` : '지금은 스타일 기본값이에요';
+    const ai = this.aiPick && sameCustom(this.aiPick, this.custom);
+    this.countEl.textContent = ai ? '✨ AI 추천 조합 그대로예요' : n ? `직접 꾸민 항목 ${n}개` : '지금은 스타일 기본값이에요';
     this.resetBtn.hidden = n === 0;
     this.countEl.closest('.cz-state')?.classList.toggle('is-default', n === 0);
   }

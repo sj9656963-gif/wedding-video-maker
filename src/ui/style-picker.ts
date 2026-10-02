@@ -47,6 +47,8 @@ export class StylePicker {
   private readonly variantEl = $('variant-list');
   private readonly variantHelp = $('variant-help');
   private variantJob = 0;
+  /** AI 자동 추천으로 고른 스타일·양식 (카드에 'AI 추천' 표시) */
+  private ai: StyleSelection | null = null;
 
   constructor(private readonly opts: StylePickerOptions) {
     this.sel = { ...opts.initial, themeId: baseTheme(opts.initial.themeId).id };
@@ -100,6 +102,31 @@ export class StylePicker {
     if (this.mood !== 'all' && !baseTheme(themeId).moods.includes(this.mood)) this.setMood('all');
     input.checked = true;
     this.openDetail(card, false, () => this.pickTheme(themeId));
+  }
+
+  /** AI 자동 추천으로 고른 스타일·양식에 'AI 추천' 표시 (null이면 지움) */
+  setAiMark(mark: StyleSelection | null): void {
+    this.ai = mark ? { themeId: baseTheme(mark.themeId).id, variantId: mark.variantId } : null;
+    for (const [id, poster] of this.posters) {
+      const pill = poster.querySelector<HTMLElement>('.ai-pill');
+      if (pill) pill.hidden = this.ai?.themeId !== id;
+    }
+    this.markVariants();
+  }
+
+  /** 양식 카드의 'AI 추천' 표시 */
+  private markVariants(): void {
+    const base = baseTheme(this.sel.themeId);
+    for (const label of this.variantEl.querySelectorAll<HTMLLabelElement>('label.variant-card')) {
+      const value = label.querySelector('input')?.value;
+      const on = !!this.ai && this.ai.themeId === base.id && (this.ai.variantId ?? base.variants[0].id) === value;
+      let pill = label.querySelector<HTMLElement>('.ai-pill');
+      if (on && !pill) {
+        pill = h('span', { class: 'ai-pill', text: '✨ AI 추천' });
+        label.append(pill);
+      }
+      if (pill) pill.hidden = !on;
+    }
   }
 
   /** 되돌리기: 스타일·양식을 바꿈 (onChange 없이). 세부 설정이 열려 있으면 그 카드 아래로 옮기되 화면에서는 제자리 */
@@ -166,6 +193,9 @@ export class StylePicker {
       poster.append(
         h('span', { class: 'sd-hint' }, [h('span', { class: 'sd-hint-open', text: '양식·꾸미기 ▾' }), h('span', { class: 'sd-hint-close', text: '접기 ▴' })]),
       );
+      const aiPill = h('span', { class: 'ai-pill', text: '✨ AI 추천' });
+      aiPill.hidden = true;
+      poster.append(aiPill);
       this.posters.set(t.id, poster);
       const moods = t.moods.map((m) => MOODS.find((x) => x.id === m)?.name ?? m).join(' · ');
       const tags = h('span', { class: 'tags' }, t.highlights.map((x) => h('span', { text: x })));
@@ -363,6 +393,7 @@ export class StylePicker {
         return h('label', { class: 'variant-card' }, [input, pic, name]);
       }),
     );
+    this.markVariants();
     if (this.ready && this.open) void this.renderVariantPosters();
   }
 
